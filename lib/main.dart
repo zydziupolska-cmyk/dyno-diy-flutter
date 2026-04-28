@@ -97,8 +97,8 @@ StreamBuilder<bool>(
                     int sats = satSnapshot.data ?? 0;
                     // Prosta logika: 0-3 brak fixa, 4-6 Fix 2D, >6 Fix 3D
                     String fixType = "Szukam...";
-                    if (sats > 6) fixType = "Fix 3D";
-                    else if (sats > 0) fixType = "Fix 2D";
+                    if (sats > 6) { fixType = "Fix 3D"; }
+                    else if (sats > 0) { fixType = "Fix 2D"; }
 
                     return Text(
                       'Satelity: $sats ($fixType)',

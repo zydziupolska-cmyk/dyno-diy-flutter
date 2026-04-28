@@ -17,11 +17,13 @@ class DynoScreen extends StatefulWidget {
 class _DynoScreenState extends State<DynoScreen> {
   MeasurementState _state = MeasurementState.idle;
   CarProfile? _activeCar;
-  Timer? _simulationTimer;
+  
+  // ZMIANA: StreamSubscription zamiast Timer (prawdziwe dane z GPS)
+  StreamSubscription<double>? _speedSubscription;
 
   // Live Data
   double _currentSpeed = 0.0;
-  double _currentHp = 0.0; // Używana do pokazywania mocy na żywo
+  double _currentHp = 0.0;
   double _maxEngineHp = 0.0;
   double _lastSpeed = 0.0;
   double _lastSmoothedHp = 0.0; 
@@ -31,11 +33,11 @@ class _DynoScreenState extends State<DynoScreen> {
   double _coastingTimeElapsed = 0.0;
   final double _maxCoastingTime = 10.0; 
 
-  // Listy punktów - zmienione na 'final' zgodnie z zaleceniem Fluttera
+  // Listy punktów
   List<FlSpot> _engineHpSpots = [];
   final List<List<double>> _rawLossPoints = [];
 
-  // Weathercf (na razie 1.0 do symulacji)
+  // Weathercf
   double sessionWeatherCf = 1.0;
 
   @override
@@ -53,18 +55,30 @@ class _DynoScreenState extends State<DynoScreen> {
 
   @override
   void dispose() {
-    _simulationTimer?.cancel();
+    _speedSubscription?.cancel();
     super.dispose();
   }
 
   void _startMeasurement() {
-    if (_activeCar == null) return;
+    if (_activeCar == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Brak wybranego pojazdu')),
+      );
+      return;
+    }
+
+    if (!btService.isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ESP32 nie jest połączony')),
+      );
+      return;
+    }
     
     setState(() {
       _state = MeasurementState.accelerating;
       _coastingTimeElapsed = 0.0;
-      _currentSpeed = 40.0; 
-      _lastSpeed = 40.0;
+      _currentSpeed = 0.0; 
+      _lastSpeed = 0.0;
       _currentHp = 0.0;
       _maxEngineHp = 0.0;
       _lastSmoothedHp = 0.0;
@@ -73,18 +87,28 @@ class _DynoScreenState extends State<DynoScreen> {
       _lastTime = DateTime.now();
     });
 
-    _simulationTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+    // ZMIANA: Słuchamy prawdziwych danych GPS z ESP32
+    _speedSubscription = btService.speedStream.listen((gpsSpeed) {
+      if (_state == MeasurementState.idle || _state == MeasurementState.finished) {
+        return; // Ignoruj dane jeśli nie mierzymy
+      }
+
       DateTime now = DateTime.now();
       double timeDelta = now.difference(_lastTime!).inMilliseconds / 1000.0;
-      double newSpeed = _currentSpeed;
+      
+      // Zabezpieczenie przed zbyt małymi deltaTime (szum GPS)
+      if (timeDelta < 0.05) return;
+
+      double newSpeed = gpsSpeed; // Używamy GPS bezpośrednio
 
       // --- FAZA A: PRZYSPIESZANIE (Moc Silnika) ---
       if (_state == MeasurementState.accelerating) {
-        newSpeed += (170 - _currentSpeed) * 0.05; 
-        
-        if (newSpeed >= 140.0) {
+        // Wykryj koniec przyspieszania (prędkość spada = użytkownik zdjął gaz)
+        if (newSpeed < _lastSpeed - 2.0 && newSpeed > 100.0) {
+          print('[DYNO] Wykryto koniec przyspieszania -> WYBIEG');
           setState(() => _state = MeasurementState.coasting);
-        } else {
+        } else if (newSpeed > _lastSpeed) {
+          // Liczymy moc tylko gdy przyspieszamy
           double hpEng = PhysicsEngine.calculateEngineHp(
             v1KmH: _lastSpeed,
             v2KmH: newSpeed,
@@ -100,8 +124,11 @@ class _DynoScreenState extends State<DynoScreen> {
           setState(() {
             _currentHp = hpEng;
             _lastSmoothedHp = hpEng;
-            if (hpEng > _maxEngineHp) _maxEngineHp = hpEng;
+            if (hpEng > _maxEngineHp) {
+              _maxEngineHp = hpEng;
+            }
             
+            // Zapisz punkt do wykresu (tylko powyżej 50 km/h)
             if (newSpeed > 50 && hpEng > 10) {
               _engineHpSpots.add(FlSpot(newSpeed, hpEng));
             }
@@ -110,10 +137,8 @@ class _DynoScreenState extends State<DynoScreen> {
       } 
       // --- FAZA B: WYBIEG (Liczenie strat) ---
       else if (_state == MeasurementState.coasting) {
-        newSpeed -= 0.6; 
         _coastingTimeElapsed += timeDelta;
 
-        // POPRAWIONE: Usunięto 'dinCorrection' stąd!
         double lossHp = PhysicsEngine.calculateEngineHp(
           v1KmH: newSpeed, 
           v2KmH: _lastSpeed,
@@ -129,7 +154,8 @@ class _DynoScreenState extends State<DynoScreen> {
           _rawLossPoints.add([newSpeed, lossHp]);
         });
 
-        if (_coastingTimeElapsed >= _maxCoastingTime || newSpeed <= 0) {
+        // Koniec wybiegu
+        if (_coastingTimeElapsed >= _maxCoastingTime || newSpeed <= 40) {
           _stopAndSaveRun();
         }
       }
@@ -143,7 +169,7 @@ class _DynoScreenState extends State<DynoScreen> {
   }
 
   Future<void> _stopAndSaveRun() async {
-    _simulationTimer?.cancel();
+    _speedSubscription?.cancel();
     if (_activeCar == null) return;
 
     setState(() => _state = MeasurementState.finished);
@@ -167,7 +193,9 @@ class _DynoScreenState extends State<DynoScreen> {
       correctedSpots.add(FlSpot(speed, finalHp));
       graphStringData.add('${speed.toStringAsFixed(1)};${finalHp.toStringAsFixed(1)}');
       
-      if (finalHp > finalMaxHp) finalMaxHp = finalHp;
+      if (finalHp > finalMaxHp) {
+        finalMaxHp = finalHp;
+      }
     }
 
     final newRun = DynoRun(
@@ -182,7 +210,6 @@ class _DynoScreenState extends State<DynoScreen> {
 
     await dbService.saveRun(newRun);
 
-    // POPRAWIONE: Sprawdzenie 'mounted' przed użyciem BuildContext po await
     if (!mounted) return;
 
     setState(() {
@@ -192,7 +219,7 @@ class _DynoScreenState extends State<DynoScreen> {
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Pomiar zapisany do bazy!')),
+      SnackBar(content: Text('Pomiar zapisany! Moc max: ${finalMaxHp.toStringAsFixed(1)} KM')),
     );
   }
 
@@ -204,7 +231,11 @@ class _DynoScreenState extends State<DynoScreen> {
 
     String statusText = "GOTOWY DO STARTU";
     Color statusColor = Colors.grey;
-    if (_state == MeasurementState.accelerating) {
+    
+    if (!btService.isConnected) {
+      statusText = "CZEKAM NA ESP32...";
+      statusColor = Colors.orangeAccent;
+    } else if (_state == MeasurementState.accelerating) {
       statusText = "PRZYSPIESZANIE (Moc Silnika)";
       statusColor = Colors.greenAccent;
     } else if (_state == MeasurementState.coasting) {
@@ -218,13 +249,14 @@ class _DynoScreenState extends State<DynoScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pomiar Dyno', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent, elevation: 0,
+        backgroundColor: Colors.transparent, 
+        elevation: 0,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // Panel statusu (POPRAWIONE: withValues(alpha: ...))
+            // Panel statusu
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -240,7 +272,9 @@ class _DynoScreenState extends State<DynoScreen> {
                       padding: const EdgeInsets.only(top: 12.0),
                       child: LinearProgressIndicator(
                         value: _coastingTimeElapsed / _maxCoastingTime,
-                        backgroundColor: Colors.grey[800], color: Colors.orangeAccent, minHeight: 8,
+                        backgroundColor: Colors.grey[800], 
+                        color: Colors.orangeAccent, 
+                        minHeight: 8,
                       ),
                     ),
                 ],
@@ -249,7 +283,7 @@ class _DynoScreenState extends State<DynoScreen> {
             
             const SizedBox(height: 20),
 
-            // Zegary (POPRAWIONE: Wyświetlamy _currentHp)
+            // Zegary
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
@@ -262,10 +296,15 @@ class _DynoScreenState extends State<DynoScreen> {
                 Column(
                   children: [
                     Text(
-                      _state == MeasurementState.finished ? _maxEngineHp.toStringAsFixed(1) : _currentHp.toStringAsFixed(1), 
+                      _state == MeasurementState.finished 
+                        ? _maxEngineHp.toStringAsFixed(1) 
+                        : _currentHp.toStringAsFixed(1), 
                       style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: statusColor)
                     ),
-                    Text(_state == MeasurementState.finished ? 'MAX KM' : 'Aktualnie KM', style: const TextStyle(color: Colors.grey)),
+                    Text(
+                      _state == MeasurementState.finished ? 'MAX KM' : 'Aktualnie KM', 
+                      style: const TextStyle(color: Colors.grey)
+                    ),
                   ],
                 ),
               ],
@@ -291,7 +330,6 @@ class _DynoScreenState extends State<DynoScreen> {
                         barWidth: 6, 
                         isStrokeCapRound: true,
                         dotData: const FlDotData(show: false),
-                        // POPRAWIONE: withValues(alpha: ...)
                         belowBarData: BarAreaData(show: true, color: Colors.greenAccent.withValues(alpha: 0.05)), 
                       ),
                     ],
@@ -300,7 +338,14 @@ class _DynoScreenState extends State<DynoScreen> {
                       topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                       bottomTitles: AxisTitles(
                         axisNameWidget: const Text('Prędkość (km/h)', style: TextStyle(color: Colors.grey)),
-                        sideTitles: SideTitles(showTitles: true, reservedSize: 30, getTitlesWidget: (val, meta) => Text(val.toInt().toString(), style: const TextStyle(color: Colors.grey, fontSize: 12))),
+                        sideTitles: SideTitles(
+                          showTitles: true, 
+                          reservedSize: 30, 
+                          getTitlesWidget: (val, meta) => Text(
+                            val.toInt().toString(), 
+                            style: const TextStyle(color: Colors.grey, fontSize: 12)
+                          )
+                        ),
                       ),
                     ),
                     gridData: const FlGridData(show: true, drawVerticalLine: false),
@@ -314,19 +359,32 @@ class _DynoScreenState extends State<DynoScreen> {
 
             // Przycisk Start/Stop
             GestureDetector(
-              onTap: _state == MeasurementState.accelerating || _state == MeasurementState.coasting ? null : _startMeasurement,
+              onTap: (_state == MeasurementState.accelerating || _state == MeasurementState.coasting) 
+                ? null 
+                : _startMeasurement,
               child: Container(
-                width: 100, height: 100,
+                width: 100, 
+                height: 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  // POPRAWIONE: withValues(alpha: ...)
-                  color: _state == MeasurementState.idle || _state == MeasurementState.finished ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
-                  border: Border.all(color: _state == MeasurementState.idle || _state == MeasurementState.finished ? Colors.greenAccent : Colors.redAccent, width: 4),
+                  color: (_state == MeasurementState.idle || _state == MeasurementState.finished) 
+                    ? Colors.green.withValues(alpha: 0.1) 
+                    : Colors.red.withValues(alpha: 0.1),
+                  border: Border.all(
+                    color: (_state == MeasurementState.idle || _state == MeasurementState.finished) 
+                      ? Colors.greenAccent 
+                      : Colors.redAccent, 
+                    width: 4
+                  ),
                 ),
                 child: Center(
                   child: Icon(
-                    _state == MeasurementState.idle || _state == MeasurementState.finished ? Icons.play_arrow : Icons.save_outlined, 
-                    color: _state == MeasurementState.idle || _state == MeasurementState.finished ? Colors.greenAccent : Colors.redAccent,
+                    (_state == MeasurementState.idle || _state == MeasurementState.finished) 
+                      ? Icons.play_arrow 
+                      : Icons.save_outlined, 
+                    color: (_state == MeasurementState.idle || _state == MeasurementState.finished) 
+                      ? Colors.greenAccent 
+                      : Colors.redAccent,
                     size: 50,
                   ),
                 ),
