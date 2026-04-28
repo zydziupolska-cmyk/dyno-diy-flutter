@@ -5,14 +5,12 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 class AppBleService {
   static const String serviceUuid = "19b10000-e8f2-537e-4f6c-d104768a1214";
   static const String characteristicUuid = "19b10001-e8f2-537e-4f6c-d104768a1214";
-  static const String deviceName = "Dyno-ESP32";
 
   BluetoothDevice? _device;
   StreamSubscription<List<ScanResult>>? _scanSubscription;
   StreamSubscription<List<int>>? _notifySubscription;
   StreamSubscription<BluetoothConnectionState>? _connectionSubscription;
 
-  // --- Strumienie danych na zewnątrz ---
   final _speedController = StreamController<double>.broadcast();
   final _connectionController = StreamController<bool>.broadcast();
   final _satellitesController = StreamController<int>.broadcast();
@@ -25,9 +23,6 @@ class AppBleService {
   bool _scanning = false;
   bool _shouldReconnect = false;
 
-  // ------------------------------------------------------------------
-  //  POŁĄCZENIE
-  // ------------------------------------------------------------------
   Future<void> connectToDevice() async {
     if (_scanning || isConnected) return;
 
@@ -37,16 +32,12 @@ class AppBleService {
 
     await FlutterBluePlus.stopScan();
 
-    // Słuchaj wyników skanowania
     _scanSubscription?.cancel();
     _scanSubscription = FlutterBluePlus.scanResults.listen(
       (results) async {
         for (final r in results) {
-          // ESP32-C3 może zmieniać nazwę lub mieć prefix
-          if (r.device.platformName.contains("Dyno") || 
-              r.device.platformName.contains("ESP32")) {
-            
-            print('[BLE] Znaleziono: ${r.device.platformName}');
+          if (r.device.name.contains("Dyno") || r.device.name.contains("ESP32")) {
+            print('[BLE] Znaleziono: ${r.device.name}');
             await FlutterBluePlus.stopScan();
             _scanning = false;
             await _connectAndListen(r.device);
@@ -55,39 +46,23 @@ class AppBleService {
         }
       },
       onError: (e) {
-        print('[BLE] Błąd skanowania: $e');
+        print('[BLE] Blad skanowania: $e');
         _scanning = false;
         _connectionController.add(false);
       },
     );
 
-    // Start skanowania (POPRAWIONE: bez parametru license)
     try {
-      await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 15),
-      );
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
     } catch (e) {
-      print('[BLE] Nie można uruchomić skanowania: $e');
+      print('[BLE] Nie mozna uruchomic skanowania: $e');
       _scanning = false;
-    }
-
-    // Cleanup po timeout
-    await Future.delayed(const Duration(seconds: 16));
-    if (_scanning) {
-      await FlutterBluePlus.stopScan();
-      _scanSubscription?.cancel();
-      _scanning = false;
-      print('[BLE] Timeout - nie znaleziono urządzenia');
     }
   }
 
-  // ------------------------------------------------------------------
-  //  PO ZNALEZIENIU URZĄDZENIA
-  // ------------------------------------------------------------------
   Future<void> _connectAndListen(BluetoothDevice device) async {
     _device = device;
 
-    // Obserwujemy stan połączenia - auto-reconnect przy utracie
     _connectionSubscription?.cancel();
     _connectionSubscription = device.connectionState.listen((state) {
       final connected = state == BluetoothConnectionState.connected;
@@ -95,13 +70,11 @@ class AppBleService {
       _connectionController.add(connected);
 
       if (!connected) {
-        print('[BLE] Rozłączono');
+        print('[BLE] Rozlaczono');
         _notifySubscription?.cancel();
         _notifySubscription = null;
 
-        // Auto-reconnect jeśli było ustawione
         if (_shouldReconnect) {
-          print('[BLE] Próba ponownego połączenia za 2s...');
           Future.delayed(const Duration(seconds: 2), () {
             if (_shouldReconnect && !isConnected) {
               connectToDevice();
@@ -112,114 +85,76 @@ class AppBleService {
     });
 
     try {
-      await device.connect(
-        timeout: const Duration(seconds: 10),
-      );
-      print('[BLE] Połączono z ${device.platformName}');
-      
-      // ESP32-C3 potrzebuje chwili po połączeniu
+      // flutter_blue_plus 1.x - brak parametru license
+      await device.connect(timeout: const Duration(seconds: 10));
+      print('[BLE] Polaczono z ${device.name}');
       await Future.delayed(const Duration(milliseconds: 500));
       await _setupNotifications(device);
     } catch (e) {
-      print('[BLE] Błąd połączenia: $e');
+      print('[BLE] Blad polaczenia: $e');
       isConnected = false;
       _connectionController.add(false);
     }
   }
 
-  // ------------------------------------------------------------------
-  //  POWIADOMIENIA BLE
-  // ------------------------------------------------------------------
   Future<void> _setupNotifications(BluetoothDevice device) async {
     try {
       final services = await device.discoverServices();
-      print('[BLE] Znaleziono ${services.length} serwisów');
-
       for (final service in services) {
-        print('[BLE] Serwis UUID: ${service.uuid}');
-        
         if (service.uuid.toString().toLowerCase() == serviceUuid.toLowerCase()) {
           for (final char in service.characteristics) {
-            print('[BLE] Char UUID: ${char.uuid}');
-            
             if (char.uuid.toString().toLowerCase() == characteristicUuid.toLowerCase()) {
-              // Włącz notyfikacje
               await char.setNotifyValue(true);
-              print('[BLE] Notyfikacje włączone');
+              print('[BLE] Notyfikacje wlaczone');
 
-              // Słuchaj świeżych danych (onValueReceived > lastValueStream)
               _notifySubscription?.cancel();
-              _notifySubscription = char.onValueReceived.listen((value) {
-                if (value.isNotEmpty) {
-                  _parseFrame(value);
-                }
+              // flutter_blue_plus 1.x: char.value (nie onValueReceived)
+              _notifySubscription = char.value.listen((value) {
+                if (value.isNotEmpty) _parseFrame(value);
               });
-
               return;
             }
           }
         }
       }
-      
-      print('[BLE] Nie znaleziono odpowiedniego serwisu/charakterystyki');
+      print('[BLE] Nie znaleziono serwisu/charakterystyki!');
     } catch (e) {
-      print('[BLE] Błąd setup notyfikacji: $e');
+      print('[BLE] Blad setup: $e');
     }
   }
 
-  // ------------------------------------------------------------------
-  //  PARSOWANIE RAMKI Z ESP32
-  //
-  //  Format z Arduino: "speed;sats\n"
-  //  Przykład:         "87.4;9\n"
-  // ------------------------------------------------------------------
+  // Format ramki z ESP32: "speed;sats\n"  np. "87.4;9\n"
   void _parseFrame(List<int> rawBytes) {
     try {
       final rawData = utf8.decode(rawBytes).trim();
       print('[BLE] <- $rawData');
-      
       final parts = rawData.split(';');
 
       if (parts.isNotEmpty) {
         final speed = double.tryParse(parts[0]);
-        if (speed != null && speed >= 0) {
-          _speedController.add(speed);
-        }
+        if (speed != null && speed >= 0) _speedController.add(speed);
       }
-      
       if (parts.length >= 2) {
         final sats = int.tryParse(parts[1]);
-        if (sats != null && sats >= 0) {
-          _satellitesController.add(sats);
-        }
+        if (sats != null && sats >= 0) _satellitesController.add(sats);
       }
     } catch (e) {
-      print('[BLE] Błąd parsowania: $e');
+      print('[BLE] Blad parsowania: $e');
     }
   }
 
-  // ------------------------------------------------------------------
-  //  ROZŁĄCZ RĘCZNIE
-  // ------------------------------------------------------------------
   Future<void> disconnect() async {
-    _shouldReconnect = false; // Wyłącz auto-reconnect
-    
-    await _scanSubscription?.cancel();
-    await _notifySubscription?.cancel();
-    await _connectionSubscription?.cancel();
+    _shouldReconnect = false;
+    _scanSubscription?.cancel();
+    _notifySubscription?.cancel();
+    _connectionSubscription?.cancel();
     await _device?.disconnect();
-
     _device = null;
     isConnected = false;
     _scanning = false;
     _connectionController.add(false);
-    
-    print('[BLE] Rozłączono manualnie');
   }
 
-  // ------------------------------------------------------------------
-  //  SPRZĄTANIE
-  // ------------------------------------------------------------------
   void dispose() {
     disconnect();
     _speedController.close();

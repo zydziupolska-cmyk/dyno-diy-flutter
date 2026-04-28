@@ -33,7 +33,7 @@ dependencies:
   # Wykresy
   fl_chart: ^1.2.0
   # Bluetooth Low Energy
-  flutter_blue_plus: ^2.2.1
+  flutter_blue_plus: ^1.36.8
   # Lokalne zapisywanie danych (baza danych)
   isar: ^3.1.0
   isar_flutter_libs: ^3.1.0
