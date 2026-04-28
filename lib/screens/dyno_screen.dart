@@ -96,8 +96,8 @@ class _DynoScreenState extends State<DynoScreen> {
       DateTime now = DateTime.now();
       double timeDelta = now.difference(_lastTime!).inMilliseconds / 1000.0;
       
-      // Zabezpieczenie przed zbyt małymi deltaTime (szum GPS)
-      if (timeDelta < 0.05) return;
+      // Przy 25 Hz próbki co ~40ms – odrzucamy tylko duplikaty (< 20ms)
+      if (timeDelta < 0.02) return;
 
       double newSpeed = gpsSpeed; // Używamy GPS bezpośrednio
 
@@ -118,7 +118,7 @@ class _DynoScreenState extends State<DynoScreen> {
             area: _activeCar!.area,
             drivetrainLossFactor: _activeCar!.lossDrivetrain, 
             lastSmoothedHp: _lastSmoothedHp,
-            smoothedHpFactor: 0.3, 
+            smoothedHpFactor: 0.15, // Mniejsze przy 25Hz – więcej próbek robi robotę
           );
           
           setState(() {
