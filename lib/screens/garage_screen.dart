@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/car_profile.dart';
-import '../main.dart'; // Aby mieć dostęp do dbService
+import '../main.dart';
 
 class GarageScreen extends StatefulWidget {
-  final CarProfile car; 
-
+  final CarProfile car;
   const GarageScreen({super.key, required this.car});
 
   @override
@@ -19,10 +18,7 @@ class _GarageScreenState extends State<GarageScreen> {
   @override
   void initState() {
     super.initState();
-    // Ustawiamy w kontrolerze aktualną wagę z bazy
     _weightController = TextEditingController(text: widget.car.weightKg.toString());
-    
-    // Domyślne wartości pogodowe na start (później można je np. pobierać z internetu)
     _tempController = TextEditingController(text: "20");
     _pressureController = TextEditingController(text: "1013");
   }
@@ -35,6 +31,24 @@ class _GarageScreenState extends State<GarageScreen> {
     super.dispose();
   }
 
+  void _saveWeight(String val) {
+    final newWeight = double.tryParse(val);
+    if (newWeight == null) return;
+
+    // Tworzymy nowy obiekt z zaktualizowaną wagą (pola są final)
+    final updated = CarProfile(
+      id: widget.car.id,
+      name: widget.car.name,
+      licensePlate: widget.car.licensePlate,
+      weightKg: newWeight,
+      area: widget.car.area,
+      cd: widget.car.cd,
+      lossDrivetrain: widget.car.lossDrivetrain,
+      transmission: widget.car.transmission,
+    );
+    dbService.saveCar(updated);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -42,14 +56,13 @@ class _GarageScreenState extends State<GarageScreen> {
         title: Text('Ustawienia: ${widget.car.name}'),
         backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
       ),
-      // Używamy SingleChildScrollView, by klawiatura ekranowa nie zgłaszała błędów "overflow"
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // SEKCJA 1: PARAMETRY POJAZDU (Zapisywane w bazie)
-            const Text("Parametry pojazdu:", style: TextStyle(fontSize: 18, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+            const Text("Parametry pojazdu:",
+                style: TextStyle(fontSize: 18, color: Colors.redAccent, fontWeight: FontWeight.bold)),
             const SizedBox(height: 15),
             TextField(
               controller: _weightController,
@@ -60,20 +73,11 @@ class _GarageScreenState extends State<GarageScreen> {
                 suffixText: "kg",
                 prefixIcon: Icon(Icons.monitor_weight),
               ),
-              onChanged: (val) {
-                // Zapisujemy wagę w locie do bazy przy każdej zmianie
-                double? newWeight = double.tryParse(val);
-                if (newWeight != null) {
-                  widget.car.weightKg = newWeight;
-                  dbService.saveCar(widget.car); 
-                }
-              },
+              onChanged: _saveWeight,
             ),
-            
             const SizedBox(height: 30),
-
-            // SEKCJA 2: WARUNKI ATMOSFERYCZNE (Tymczasowe dla sesji)
-            const Text("Warunki do korekcji (Norma DIN):", style: TextStyle(fontSize: 18, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+            const Text("Warunki do korekcji (Norma DIN):",
+                style: TextStyle(fontSize: 18, color: Colors.redAccent, fontWeight: FontWeight.bold)),
             const SizedBox(height: 15),
             Row(
               children: [
@@ -98,16 +102,13 @@ class _GarageScreenState extends State<GarageScreen> {
                       labelText: "Ciśnienie",
                       border: OutlineInputBorder(),
                       suffixText: "hPa",
-                      prefixIcon: Icon(Icons.speed), // Używamy ikony speed jako barometru
+                      prefixIcon: Icon(Icons.speed),
                     ),
                   ),
                 ),
               ],
             ),
-
             const SizedBox(height: 30),
-            
-            // PANEL INFORMACYJNY
             Card(
               color: Colors.grey[850],
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -121,12 +122,12 @@ class _GarageScreenState extends State<GarageScreen> {
                       child: Text(
                         "Dokładna waga to klucz do poprawnego pomiaru (błąd 50kg to ok. 3-5% przekłamania wyniku). Temperatura i ciśnienie posłużą do korekcji wyników wg normy DIN 70020.",
                         style: TextStyle(height: 1.4),
-                      )
+                      ),
                     ),
                   ],
                 ),
               ),
-            )
+            ),
           ],
         ),
       ),

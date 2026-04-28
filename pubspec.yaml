@@ -35,8 +35,8 @@ dependencies:
   # Bluetooth Low Energy
   flutter_blue_plus: ^1.36.8
   # Lokalne zapisywanie danych (baza danych)
-  isar: ^3.1.0
-  isar_flutter_libs: ^3.1.0
+  sqflite: ^2.3.3
+  path: ^1.9.0
   # Generowanie PNG z wykresu
   screenshot: ^2.1.0
   # Udostępnianie plików XML/PNG
@@ -53,7 +53,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   build_runner: any
-  isar_generator: ^3.1.0
+
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

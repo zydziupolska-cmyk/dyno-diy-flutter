@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'screens/garage_screen.dart';
 import 'screens/calibration_screen.dart';
 import 'screens/dyno_screen.dart';
@@ -8,13 +9,21 @@ import 'services/database_service.dart';
 import 'models/car_profile.dart';
 import 'services/bluetooth_service.dart';
 
-// Globalny pilot do bazy danych
 final dbService = DatabaseService();
 final btService = AppBleService();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dbService.init(); // Odpalamy bazę przed startem aplikacji
+  await dbService.init();
+
+  // Poproś o uprawnienia Bluetooth i lokalizacji
+  await [
+    Permission.bluetooth,
+    Permission.bluetoothScan,
+    Permission.bluetoothConnect,
+    Permission.locationWhenInUse,
+  ].request();
+
   runApp(const DynoApp());
 }
 
@@ -109,10 +118,21 @@ StreamBuilder<bool>(
             ],
           ),
           const Spacer(),
-          Text(
-            connected ? 'POŁĄCZONO' : 'ROZŁĄCZONO',
-            style: TextStyle(color: statusColor, fontWeight: FontWeight.bold),
-          ),
+          if (!connected)
+            ElevatedButton(
+              onPressed: () => btService.connectToDevice(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              child: const Text('POŁĄCZ'),
+            )
+          else
+            Text(
+              'POŁĄCZONO',
+              style: TextStyle(color: statusColor, fontWeight: FontWeight.bold),
+            ),
         ],
       ),
     );

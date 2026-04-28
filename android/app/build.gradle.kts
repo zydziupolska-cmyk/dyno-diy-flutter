@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.example.dyno_diy"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

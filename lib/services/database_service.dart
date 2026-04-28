@@ -1,31 +1,81 @@
-import 'package:isar/isar.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
 import '../models/car_profile.dart';
 
 class DatabaseService {
-  late Isar isar;
+  Database? _db;
 
   Future<void> init() async {
-    final dir = await getApplicationDocumentsDirectory();
-    // DODAJ DynoRunSchema TUTAJ!
-    isar = await Isar.open(
-      [CarProfileSchema, DynoRunSchema], // <--- Dodane!
-      directory: dir.path,
+    final path = join(await getDatabasesPath(), 'dyno_diy.db');
+    _db = await openDatabase(
+      path,
+      version: 1,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE cars (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            licensePlate TEXT,
+            weightKg REAL NOT NULL,
+            area REAL NOT NULL,
+            cd REAL NOT NULL,
+            lossDrivetrain REAL NOT NULL,
+            transmission INTEGER NOT NULL
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            carId INTEGER NOT NULL,
+            timestamp INTEGER NOT NULL,
+            maxEngineHp REAL NOT NULL,
+            maxEngineTorque REAL NOT NULL,
+            sessionWeightKg REAL NOT NULL,
+            correctionFactor REAL NOT NULL,
+            graphDataPoints TEXT NOT NULL
+          )
+        ''');
+      },
     );
   }
 
-  // --- CARS ---
-  Future<List<CarProfile>> getAllCars() async => await isar.carProfiles.where().findAll();
-  Future<void> saveCar(CarProfile car) async => await isar.writeTxn(() => isar.carProfiles.put(car));
-  Future<void> deleteCar(int id) async => await isar.writeTxn(() => isar.carProfiles.delete(id));
-
-  // --- DYNO RUNS --- (NOWE FUNKCJE)
-  Future<void> saveRun(DynoRun run) async {
-    await isar.writeTxn(() => isar.dynoRuns.put(run));
+  Database get db {
+    if (_db == null) throw Exception('Baza danych nie zainicjalizowana!');
+    return _db!;
   }
 
-  // Pobierz pomiary dla konkretnego auta
+  // --- CARS ---
+  Future<List<CarProfile>> getAllCars() async {
+    final maps = await db.query('cars');
+    return maps.map(CarProfile.fromMap).toList();
+  }
+
+  Future<int> saveCar(CarProfile car) async {
+    if (car.id == 0) {
+      return await db.insert('cars', car.toMap());
+    } else {
+      await db.update('cars', car.toMap(), where: 'id = ?', whereArgs: [car.id]);
+      return car.id;
+    }
+  }
+
+  Future<void> deleteCar(int id) async {
+    await db.delete('cars', where: 'id = ?', whereArgs: [id]);
+    await db.delete('runs', where: 'carId = ?', whereArgs: [id]);
+  }
+
+  // --- RUNS ---
+  Future<void> saveRun(DynoRun run) async {
+    await db.insert('runs', run.toMap());
+  }
+
   Future<List<DynoRun>> getRunsForCar(int carId) async {
-    return await isar.dynoRuns.filter().carIdEqualTo(carId).sortByTimestampDesc().findAll();
+    final maps = await db.query(
+      'runs',
+      where: 'carId = ?',
+      whereArgs: [carId],
+      orderBy: 'timestamp DESC',
+    );
+    return maps.map(DynoRun.fromMap).toList();
   }
 }
