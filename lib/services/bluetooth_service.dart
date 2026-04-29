@@ -36,8 +36,8 @@ class AppBleService {
     _scanSubscription = FlutterBluePlus.scanResults.listen(
       (results) async {
         for (final r in results) {
-          if (r.device.name.contains("Dyno") || r.device.name.contains("ESP32")) {
-            print('[BLE] Znaleziono: ${r.device.name}');
+          if (r.device.platformName.contains("Dyno") || r.device.platformName.contains("ESP32")) {
+            print('[BLE] Znaleziono: ${r.device.platformName}');
             await FlutterBluePlus.stopScan();
             _scanning = false;
             await _connectAndListen(r.device);
@@ -87,7 +87,7 @@ class AppBleService {
     try {
       // flutter_blue_plus 1.x - brak parametru license
       await device.connect(timeout: const Duration(seconds: 10));
-      print('[BLE] Polaczono z ${device.name}');
+      print('[BLE] Polaczono z ${device.platformName}');
       await Future.delayed(const Duration(milliseconds: 500));
       await _setupNotifications(device);
     } catch (e) {

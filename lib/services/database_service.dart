@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/car_profile.dart';
+import '../models/workshop_settings.dart';
 
 class DatabaseService {
   Database? _db;
@@ -9,34 +10,82 @@ class DatabaseService {
     final path = join(await getDatabasesPath(), 'dyno_diy.db');
     _db = await openDatabase(
       path,
-      version: 1,
+      version: 3,
       onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE cars (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            licensePlate TEXT,
-            weightKg REAL NOT NULL,
-            area REAL NOT NULL,
-            cd REAL NOT NULL,
-            lossDrivetrain REAL NOT NULL,
-            transmission INTEGER NOT NULL
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE runs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            carId INTEGER NOT NULL,
-            timestamp INTEGER NOT NULL,
-            maxEngineHp REAL NOT NULL,
-            maxEngineTorque REAL NOT NULL,
-            sessionWeightKg REAL NOT NULL,
-            correctionFactor REAL NOT NULL,
-            graphDataPoints TEXT NOT NULL
-          )
-        ''');
+        await _createTables(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS calibrations (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              carId INTEGER NOT NULL,
+              speedAt3000rpm REAL NOT NULL,
+              kFactor REAL NOT NULL,
+              timestamp INTEGER NOT NULL
+            )
+          ''');
+        }
+        if (oldVersion < 3) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS workshop_settings (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL DEFAULT '',
+              phone TEXT NOT NULL DEFAULT '',
+              website TEXT NOT NULL DEFAULT '',
+              customText TEXT NOT NULL DEFAULT '',
+              logoPath TEXT
+            )
+          ''');
+        }
       },
     );
+  }
+
+  Future<void> _createTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE cars (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        licensePlate TEXT,
+        weightKg REAL NOT NULL,
+        area REAL NOT NULL,
+        cd REAL NOT NULL,
+        lossDrivetrain REAL NOT NULL,
+        transmission INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        carId INTEGER NOT NULL,
+        timestamp INTEGER NOT NULL,
+        maxEngineHp REAL NOT NULL,
+        maxEngineTorque REAL NOT NULL,
+        sessionWeightKg REAL NOT NULL,
+        correctionFactor REAL NOT NULL,
+        graphDataPoints TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE calibrations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        carId INTEGER NOT NULL,
+        speedAt3000rpm REAL NOT NULL,
+        kFactor REAL NOT NULL,
+        timestamp INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE workshop_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL DEFAULT '',
+        phone TEXT NOT NULL DEFAULT '',
+        website TEXT NOT NULL DEFAULT '',
+        customText TEXT NOT NULL DEFAULT '',
+        logoPath TEXT
+      )
+    ''');
   }
 
   Database get db {
@@ -62,6 +111,7 @@ class DatabaseService {
   Future<void> deleteCar(int id) async {
     await db.delete('cars', where: 'id = ?', whereArgs: [id]);
     await db.delete('runs', where: 'carId = ?', whereArgs: [id]);
+    await db.delete('calibrations', where: 'carId = ?', whereArgs: [id]);
   }
 
   // --- RUNS ---
@@ -77,5 +127,52 @@ class DatabaseService {
       orderBy: 'timestamp DESC',
     );
     return maps.map(DynoRun.fromMap).toList();
+  }
+
+  // --- CALIBRATIONS ---
+  Future<void> saveCalibration(int carId, double speedAt3000rpm) async {
+    final kFactor = 3000.0 / speedAt3000rpm;
+    await db.insert('calibrations', {
+      'carId': carId,
+      'speedAt3000rpm': speedAt3000rpm,
+      'kFactor': kFactor,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
+  Future<Map<String, double>?> getLatestCalibration(int carId) async {
+    final maps = await db.query(
+      'calibrations',
+      where: 'carId = ?',
+      whereArgs: [carId],
+      orderBy: 'timestamp DESC',
+      limit: 1,
+    );
+    if (maps.isEmpty) return null;
+    return {
+      'speedAt3000rpm': maps.first['speedAt3000rpm'] as double,
+      'kFactor': maps.first['kFactor'] as double,
+    };
+  }
+
+  // --- WORKSHOP SETTINGS ---
+  Future<WorkshopSettings> getWorkshopSettings() async {
+    final maps = await db.query('workshop_settings', limit: 1);
+    if (maps.isEmpty) return WorkshopSettings();
+    return WorkshopSettings.fromMap(maps.first);
+  }
+
+  Future<void> saveWorkshopSettings(WorkshopSettings settings) async {
+    final existing = await db.query('workshop_settings', limit: 1);
+    if (existing.isEmpty) {
+      await db.insert('workshop_settings', settings.toMap());
+    } else {
+      await db.update(
+        'workshop_settings',
+        settings.toMap(),
+        where: 'id = ?',
+        whereArgs: [existing.first['id']],
+      );
+    }
   }
 }

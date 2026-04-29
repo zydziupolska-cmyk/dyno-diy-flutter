@@ -2,15 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'screens/garage_screen.dart';
 import 'screens/calibration_screen.dart';
-import 'screens/dyno_screen.dart';
+import 'screens/prelaunch_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/add_car_screen.dart';
+import 'screens/workshop_settings_screen.dart';
 import 'services/database_service.dart';
 import 'models/car_profile.dart';
 import 'services/bluetooth_service.dart';
 
 final dbService = DatabaseService();
 final btService = AppBleService();
+
+// Cache danych sesji pomiaru – przeżywa rebuild zakładek
+// klucz = carId, wartość = {weight, temp, pressure}
+final Map<int, Map<String, double>> sessionCache = {};
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,6 +65,17 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       appBar: AppBar(
         title: const Text('Dyno DIY - Start', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.business_outlined),
+            tooltip: 'Ustawienia warsztatu',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const WorkshopSettingsScreen()),
+            ),
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -263,9 +279,9 @@ class _SessionNavigationState extends State<SessionNavigation> {
   Widget build(BuildContext context) {
     // Listę ekranów przenosimy tutaj, żeby mogła "widzieć" widget.car
     final List<Widget> screens = [
-      GarageScreen(car: widget.car), // Przekazujemy auto do Garażu, gdzie ustalamy wagę
+      GarageScreen(car: widget.car),
       const CalibrationScreen(),
-      const DynoScreen(),
+      _PomiarTab(car: widget.car),
       const HistoryScreen(),
     ];
 
@@ -286,5 +302,16 @@ class _SessionNavigationState extends State<SessionNavigation> {
         ],
       ),
     );
+  }
+}
+
+// Wrapper który przed pomiarem pokazuje PreLaunchScreen z właściwym autem
+class _PomiarTab extends StatelessWidget {
+  final CarProfile car;
+  const _PomiarTab({required this.car});
+
+  @override
+  Widget build(BuildContext context) {
+    return PreLaunchScreen(car: car);
   }
 }

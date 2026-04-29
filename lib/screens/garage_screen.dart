@@ -18,24 +18,37 @@ class _GarageScreenState extends State<GarageScreen> {
   @override
   void initState() {
     super.initState();
-    _weightController = TextEditingController(text: widget.car.weightKg.toString());
-    _tempController = TextEditingController(text: "20");
-    _pressureController = TextEditingController(text: "1013");
+
+    // Czytaj z sessionCache – dane przeżywają przełączanie zakładek
+    final cached = sessionCache[widget.car.id];
+    _weightController   = TextEditingController(
+        text: (cached?['weight'] ?? widget.car.weightKg).toStringAsFixed(0));
+    _tempController     = TextEditingController(
+        text: (cached?['temp'] ?? 20.0).toStringAsFixed(0));
+    _pressureController = TextEditingController(
+        text: (cached?['pressure'] ?? 1013.0).toStringAsFixed(0));
+
+    // Zapisuj zmiany na bieżąco do cache
+    _weightController.addListener(_saveToCache);
+    _tempController.addListener(_saveToCache);
+    _pressureController.addListener(_saveToCache);
   }
 
-  @override
-  void dispose() {
-    _weightController.dispose();
-    _tempController.dispose();
-    _pressureController.dispose();
-    super.dispose();
+  void _saveToCache() {
+    final weight   = double.tryParse(_weightController.text)   ?? widget.car.weightKg;
+    final temp     = double.tryParse(_tempController.text)     ?? 20.0;
+    final pressure = double.tryParse(_pressureController.text) ?? 1013.0;
+
+    sessionCache[widget.car.id] = {
+      'weight':   weight,
+      'temp':     temp,
+      'pressure': pressure,
+    };
   }
 
-  void _saveWeight(String val) {
+  void _saveWeightToDb(String val) {
     final newWeight = double.tryParse(val);
     if (newWeight == null) return;
-
-    // Tworzymy nowy obiekt z zaktualizowaną wagą (pola są final)
     final updated = CarProfile(
       id: widget.car.id,
       name: widget.car.name,
@@ -50,6 +63,17 @@ class _GarageScreenState extends State<GarageScreen> {
   }
 
   @override
+  void dispose() {
+    _weightController.removeListener(_saveToCache);
+    _tempController.removeListener(_saveToCache);
+    _pressureController.removeListener(_saveToCache);
+    _weightController.dispose();
+    _tempController.dispose();
+    _pressureController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -61,23 +85,25 @@ class _GarageScreenState extends State<GarageScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Parametry pojazdu:",
-                style: TextStyle(fontSize: 18, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+            const Text('Parametry pojazdu:',
+                style: TextStyle(fontSize: 18, color: Colors.redAccent,
+                    fontWeight: FontWeight.bold)),
             const SizedBox(height: 15),
             TextField(
               controller: _weightController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                labelText: "Waga (kg) = Auto + Kierowca + Paliwo",
+                labelText: 'Waga (kg) = Auto + Kierowca + Paliwo',
                 border: OutlineInputBorder(),
-                suffixText: "kg",
+                suffixText: 'kg',
                 prefixIcon: Icon(Icons.monitor_weight),
               ),
-              onChanged: _saveWeight,
+              onChanged: _saveWeightToDb,
             ),
             const SizedBox(height: 30),
-            const Text("Warunki do korekcji (Norma DIN):",
-                style: TextStyle(fontSize: 18, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+            const Text('Warunki do korekcji (Norma DIN):',
+                style: TextStyle(fontSize: 18, color: Colors.redAccent,
+                    fontWeight: FontWeight.bold)),
             const SizedBox(height: 15),
             Row(
               children: [
@@ -86,9 +112,9 @@ class _GarageScreenState extends State<GarageScreen> {
                     controller: _tempController,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: "Temperatura",
+                      labelText: 'Temperatura',
                       border: OutlineInputBorder(),
-                      suffixText: "°C",
+                      suffixText: '°C',
                       prefixIcon: Icon(Icons.thermostat),
                     ),
                   ),
@@ -99,9 +125,9 @@ class _GarageScreenState extends State<GarageScreen> {
                     controller: _pressureController,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: "Ciśnienie",
+                      labelText: 'Ciśnienie',
                       border: OutlineInputBorder(),
-                      suffixText: "hPa",
+                      suffixText: 'hPa',
                       prefixIcon: Icon(Icons.speed),
                     ),
                   ),
@@ -111,7 +137,8 @@ class _GarageScreenState extends State<GarageScreen> {
             const SizedBox(height: 30),
             Card(
               color: Colors.grey[850],
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
               child: const Padding(
                 padding: EdgeInsets.all(16.0),
                 child: Row(
@@ -120,7 +147,10 @@ class _GarageScreenState extends State<GarageScreen> {
                     SizedBox(width: 15),
                     Expanded(
                       child: Text(
-                        "Dokładna waga to klucz do poprawnego pomiaru (błąd 50kg to ok. 3-5% przekłamania wyniku). Temperatura i ciśnienie posłużą do korekcji wyników wg normy DIN 70020.",
+                        'Dokładna waga to klucz do poprawnego pomiaru '
+                        '(błąd 50kg to ok. 3-5% przekłamania wyniku). '
+                        'Temperatura i ciśnienie posłużą do korekcji '
+                        'wyników wg normy DIN 70020.',
                         style: TextStyle(height: 1.4),
                       ),
                     ),
