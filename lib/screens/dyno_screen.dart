@@ -8,10 +8,11 @@ import '../main.dart';
 enum MeasurementState { idle, accelerating, coasting, finished }
 
 class DynoScreen extends StatefulWidget {
+  final CarProfile car;
   final double? overrideWeight;
   final double weatherCf;
   final double? kFactor;
-  const DynoScreen({super.key, this.overrideWeight, this.weatherCf = 1.0, this.kFactor});
+  const DynoScreen({super.key, required this.car, this.overrideWeight, this.weatherCf = 1.0, this.kFactor});
 
   @override
   State<DynoScreen> createState() => _DynoScreenState();
@@ -29,7 +30,8 @@ class _DynoScreenState extends State<DynoScreen> {
   double _maxEngineNm = 0.0;
   double _maxEngineHp = 0.0;
   double _lastSpeed = 0.0;
-  double _lastSmoothedHp = 0.0;
+  double _lastSmoothedHp   = 0.0;
+  double _lastSmoothedLoss = 0.0;
   DateTime? _lastTime;
 
   // Wybieg
@@ -39,7 +41,7 @@ class _DynoScreenState extends State<DynoScreen> {
   // Detekcja końca przyspieszania
   // Zliczamy ile próbek z rzędu prędkość nie rośnie
   int _notAcceleratingCount = 0;
-  static const int _notAcceleratingThreshold = 8; // ~800ms przy 10Hz
+  static const int _notAcceleratingThreshold = 20; // ~2s przy 10Hz
 
   List<FlSpot> _engineHpSpots = [];
   final List<List<double>> _rawLossPoints = [];
@@ -48,14 +50,7 @@ class _DynoScreenState extends State<DynoScreen> {
   @override
   void initState() {
     super.initState();
-    _loadActiveCar();
-  }
-
-  Future<void> _loadActiveCar() async {
-    final cars = await dbService.getAllCars();
-    if (cars.isNotEmpty) {
-      setState(() { _activeCar = cars.first; });
-    }
+    _activeCar = widget.car;
   }
 
   @override
@@ -87,7 +82,8 @@ class _DynoScreenState extends State<DynoScreen> {
       _currentNm = 0.0;
       _maxEngineNm = 0.0;
       _maxEngineHp = 0.0;
-      _lastSmoothedHp = 0.0;
+      _lastSmoothedHp   = 0.0;
+      _lastSmoothedLoss = 0.0;
       _notAcceleratingCount = 0;
       _engineHpSpots.clear();
       _rawLossPoints.clear();
@@ -103,23 +99,34 @@ class _DynoScreenState extends State<DynoScreen> {
 
       double newSpeed = gpsSpeed;
 
+      // Walidacja GPS: odrzuć nierealne skoki prędkości
+      // Max przyspieszenie ~10 m/s² = 36 km/h/s
+      if (_lastSpeed > 0 && timeDelta > 0) {
+        final maxDelta = 36.0 * timeDelta; // max zmiana km/h w tej próbce
+        if ((newSpeed - _lastSpeed).abs() > maxDelta) {
+          // GPS szum - pomiń tę próbkę, tylko zaktualizuj czas
+          setState(() { _lastTime = now; });
+          return;
+        }
+      }
+
       // --- FAZA A: PRZYSPIESZANIE ---
       if (_state == MeasurementState.accelerating) {
 
-        // Zliczaj ile próbek z rzędu prędkość nie rośnie (lub spada)
-        if (newSpeed <= _lastSpeed + 0.3) {
+        // Zliczaj ile próbek z rzędu prędkość nie rośnie
+        if (newSpeed <= _lastSpeed + 0.5) {
           _notAcceleratingCount++;
         } else {
           _notAcceleratingCount = 0; // Reset gdy przyspiesza
         }
 
         // Detekcja końca przyspieszania:
-        // - Przez _notAcceleratingThreshold próbek nie przyspiesza
-        // - LUB prędkość wyraźnie spada (> 3 km/h) – zjazd z gazu
-        // - LUB prędkość poniżej 20 km/h (bieg neutralny / sprzęgło)
-        bool velocityDrop = newSpeed < _lastSpeed - 3.0;
-        bool stalledOrNeutral = newSpeed < 20.0 && _lastSpeed > 30.0;
-        bool prolongedNoAccel = _notAcceleratingCount >= _notAcceleratingThreshold && newSpeed > 40.0;
+        // - Prędkość wyraźnie spada (> 5 km/h) – zjazd z gazu lub sprzęgło
+        // - LUB bieg neutralny (prędkość < 15 km/h gdy jechał > 40)
+        // - LUB brak przyspieszania przez ~2s (20 próbek przy 10Hz)
+        bool velocityDrop = newSpeed < _lastSpeed - 5.0;
+        bool stalledOrNeutral = newSpeed < 15.0 && _lastSpeed > 40.0;
+        bool prolongedNoAccel = _notAcceleratingCount >= 20 && newSpeed > 50.0;
 
         if (velocityDrop || stalledOrNeutral || prolongedNoAccel) {
           debugPrint('[DYNO] Koniec przyspieszania -> WYBIEG (drop=$velocityDrop neutral=$stalledOrNeutral noAccel=$prolongedNoAccel)');
@@ -130,33 +137,41 @@ class _DynoScreenState extends State<DynoScreen> {
         } else {
           // Liczymy moc gdy prędkość rośnie
           if (newSpeed > _lastSpeed + 0.1) {
-            double hpEng = PhysicsEngine.calculateEngineHp(
+            // Moc na kołach: tylko masa × przyspieszenie × prędkość
+            // (jak Dynomet – opory wychodzą z wybiegu, nie z Cd/area)
+            final hpWheel = PhysicsEngine.calculateWheelHp(
               v1KmH: _lastSpeed,
               v2KmH: newSpeed,
               timeDelta: timeDelta,
               weight: widget.overrideWeight ?? _activeCar!.weightKg,
-              cd: _activeCar!.cd,
-              area: _activeCar!.area,
-              drivetrainLossFactor: _activeCar!.lossDrivetrain,
-              lastSmoothedHp: _lastSmoothedHp,
-              smoothedHpFactor: 0.15,
             );
 
+            // Wygładzanie EMA (alpha=0.3)
+            final hpEng = PhysicsEngine.ema(hpWheel, _lastSmoothedHp, 0.55);
+
             setState(() {
-              _currentHp = hpEng;
+              _currentHp     = hpEng;
               _lastSmoothedHp = hpEng;
               if (hpEng > _maxEngineHp) _maxEngineHp = hpEng;
-            // Oblicz Nm z RPM (jezeli mamy kFactor z kalibracji)
-            if (widget.kFactor != null && widget.kFactor! > 0) {
-              final rpm = newSpeed * widget.kFactor!;
-              if (rpm > 0) {
-                final nm = (hpEng * 9550.0) / rpm;
-                _currentNm = nm;
-                if (nm > _maxEngineNm) _maxEngineNm = nm;
+
+              // Nm live (orientacyjne — finalne Nm obliczamy po wybiegu)
+              if (widget.kFactor != null && widget.kFactor! > 0) {
+                final rpm = newSpeed * widget.kFactor!;
+                if (rpm > 0) {
+                  final nm = (hpEng * 9550.0) / rpm;
+                  _currentNm = nm;
+                  if (nm > _maxEngineNm) _maxEngineNm = nm;
+                }
               }
-            }
-              if (newSpeed > 30 && hpEng > 10) {
-                _engineHpSpots.add(FlSpot(newSpeed, hpEng));
+
+              // Oś X: RPM jeśli mamy kFactor, w przeciwnym razie km/h
+              final xVal = (widget.kFactor != null && widget.kFactor! > 0)
+                  ? newSpeed * widget.kFactor!
+                  : newSpeed;
+              final lastX = _engineHpSpots.isNotEmpty ? _engineHpSpots.last.x : 0.0;
+              final minXStep = widget.kFactor != null ? 20.0 : 0.5;
+              if (newSpeed > 30 && hpEng > 10 && xVal >= lastX + minXStep) {
+                _engineHpSpots.add(FlSpot(xVal, hpEng));
               }
             });
           }
@@ -167,20 +182,35 @@ class _DynoScreenState extends State<DynoScreen> {
       else if (_state == MeasurementState.coasting) {
         _coastingTimeElapsed += timeDelta;
 
-        double lossHp = PhysicsEngine.calculateEngineHp(
-          v1KmH: newSpeed,
-          v2KmH: _lastSpeed,
+        // Walidacja GPS - odrzuć nierealne skoki podczas wybiegu
+        // Max opóźnienie bez hamulca: ~5 m/s² = 18 km/h/s
+        if (_lastSpeed > 0 && timeDelta > 0) {
+          final maxCoastDelta = 18.0 * timeDelta;
+          if ((_lastSpeed - newSpeed).abs() > maxCoastDelta) {
+            setState(() { _lastTime = now; });
+            return;
+          }
+        }
+
+        // Straty wybiegu: masa × opóźnienie × prędkość
+        final lossRaw = PhysicsEngine.calculateCoastLossHp(
+          v1KmH: _lastSpeed,
+          v2KmH: newSpeed,
           timeDelta: timeDelta,
           weight: widget.overrideWeight ?? _activeCar!.weightKg,
-          cd: _activeCar!.cd,
-          area: _activeCar!.area,
-          drivetrainLossFactor: 0,
         );
 
-        setState(() {
-          _currentHp = lossHp;
-          _rawLossPoints.add([newSpeed, lossHp]);
-        });
+        // EMA wygładzanie strat (alpha=0.6 - mocne, GPS szum duży przy małym opóźnieniu)
+        final lossHp = PhysicsEngine.ema(lossRaw, _lastSmoothedLoss, 0.60);
+        _lastSmoothedLoss = lossHp;
+
+        if (lossHp > 0 && lossHp < 200) {
+          // Zapisuj tylko sensowne wartości strat (< 200 KM to górny limit)
+          setState(() {
+            _currentHp = lossHp;
+            _rawLossPoints.add([newSpeed, lossHp]);
+          });
+        }
 
         if (_coastingTimeElapsed >= _maxCoastingTime || newSpeed <= 30) {
           _stopAndSaveRun();
@@ -219,24 +249,43 @@ class _DynoScreenState extends State<DynoScreen> {
     List<FlSpot> correctedSpots = [];
     List<String> graphStringData = [];
     double finalMaxHp = 0.0;
+    double finalMaxNm = 0.0;
 
     for (var wheelSpot in _engineHpSpots) {
       double speed = wheelSpot.x;
       double smoothedWheelHp = wheelSpot.y;
-      double calculatedLossAtSpeed = (a * speed + b);
-      double finalHp = (smoothedWheelHp + calculatedLossAtSpeed) * sessionWeatherCf;
+      // Straty muszą być dodatnie - opory zawsze pochłaniają energię
+      final lossAtSpeed = (a * speed + b).clamp(0.0, 500.0);
+      double finalHp = (smoothedWheelHp + lossAtSpeed) * sessionWeatherCf;
 
-      correctedSpots.add(FlSpot(speed, finalHp));
-      graphStringData.add('${speed.toStringAsFixed(1)};${finalHp.toStringAsFixed(1)}');
+      // Oblicz Nm po korekcji (z kFactor jeśli dostępny)
+      // speed tutaj to wartość X z wykresu (RPM lub km/h)
+      double finalNm = 0.0;
+      if (widget.kFactor != null && widget.kFactor! > 0) {
+        // Jeśli X był RPM - używamy bezpośrednio
+        // Jeśli X był km/h - przeliczamy na RPM
+        final rpm = speed; // X już jest w RPM gdy kFactor != null
+        if (rpm > 0) finalNm = (finalHp * 9550.0) / rpm;
+      }
+
+      // Konwertuj X z powrotem do km/h (było RPM na wykresie live)
+      final speedKmh = (widget.kFactor != null && widget.kFactor! > 0)
+          ? speed / widget.kFactor!
+          : speed;
+      correctedSpots.add(FlSpot(speedKmh, finalHp));
+      // Format: speed_kmh;hp;nm
+      graphStringData.add('${speedKmh.toStringAsFixed(1)};${finalHp.toStringAsFixed(1)};${finalNm.toStringAsFixed(1)}');
+
       if (finalHp > finalMaxHp) finalMaxHp = finalHp;
+      if (finalNm > finalMaxNm) finalMaxNm = finalNm;
     }
 
     final newRun = DynoRun(
       carId: _activeCar!.id,
       timestamp: DateTime.now(),
       maxEngineHp: finalMaxHp,
-      maxEngineTorque: _maxEngineNm,
-      sessionWeightKg: _activeCar!.weightKg,
+      maxEngineTorque: finalMaxNm, // Nm po korekcji DIN i stratach
+      sessionWeightKg: widget.overrideWeight ?? _activeCar!.weightKg,
       correctionFactor: sessionWeatherCf,
       graphDataPoints: graphStringData,
     );
@@ -315,28 +364,36 @@ class _DynoScreenState extends State<DynoScreen> {
 
             const SizedBox(height: 20),
 
-            // Zegary
+            // Zegary - wiersz 1: prędkość
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 Column(
                   children: [
                     Text(_currentSpeed.toStringAsFixed(1),
-                        style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold)),
-                    const Text('km/h', style: TextStyle(color: Colors.grey)),
+                        style: const TextStyle(fontSize: 52, fontWeight: FontWeight.bold)),
+                    const Text('km/h', style: TextStyle(color: Colors.grey, fontSize: 14)),
                   ],
                 ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Zegary - wiersz 2: KM i Nm
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
                 Column(
                   children: [
                     Text(
                       _state == MeasurementState.finished
                           ? _maxEngineHp.toStringAsFixed(1)
                           : _currentHp.toStringAsFixed(1),
-                      style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: statusColor),
+                      style: TextStyle(fontSize: 42, fontWeight: FontWeight.bold,
+                          color: statusColor),
                     ),
                     Text(
                       _state == MeasurementState.finished ? 'MAX KM' : 'KM',
-                      style: const TextStyle(color: Colors.grey),
+                      style: const TextStyle(color: Colors.grey, fontSize: 14),
                     ),
                   ],
                 ),
@@ -347,12 +404,12 @@ class _DynoScreenState extends State<DynoScreen> {
                         _state == MeasurementState.finished
                             ? _maxEngineNm.toStringAsFixed(1)
                             : _currentNm.toStringAsFixed(1),
-                        style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold,
+                        style: const TextStyle(fontSize: 42, fontWeight: FontWeight.bold,
                             color: Colors.blueAccent),
                       ),
                       Text(
                         _state == MeasurementState.finished ? 'MAX Nm' : 'Nm',
-                        style: const TextStyle(color: Colors.grey),
+                        style: const TextStyle(color: Colors.grey, fontSize: 14),
                       ),
                     ],
                   ),
@@ -403,7 +460,7 @@ class _DynoScreenState extends State<DynoScreen> {
                       rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                       topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                       bottomTitles: AxisTitles(
-                        axisNameWidget: const Text('Prędkość (km/h)',
+                        axisNameWidget: Text(widget.kFactor != null ? 'RPM' : 'km/h',
                             style: TextStyle(color: Colors.grey)),
                         sideTitles: SideTitles(
                           showTitles: true,

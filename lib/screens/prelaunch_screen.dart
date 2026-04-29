@@ -87,6 +87,7 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => DynoScreen(
+          car: widget.car,
           overrideWeight: weight,
           weatherCf: cf,
           kFactor: _calibration?['kFactor'],

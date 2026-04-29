@@ -31,7 +31,14 @@ class ExportService {
       if (speed == null || hp == null) continue;
       final rpm = speed * kFactor;
       hpPts.add(_Pt(rpm, hp));
-      if (rpm > 0) nmPts.add(_Pt(rpm, (hp * 9550.0) / rpm));
+      // Użyj zapisanego Nm (format v2) lub oblicz
+      if (rpm > 0) {
+        final savedNm = parts.length >= 3 ? double.tryParse(parts[2]) : null;
+        final nm = (savedNm != null && savedNm > 0)
+            ? savedNm
+            : (hp * 9550.0) / rpm;
+        nmPts.add(_Pt(rpm, nm));
+      }
     }
     hpPts.sort((a, b) => a.x.compareTo(b.x));
     nmPts.sort((a, b) => a.x.compareTo(b.x));
@@ -62,7 +69,8 @@ class ExportService {
       maxHpAxis: maxHpAxis, maxNmAxis: maxNmAxis,
       maxHp: maxHp, maxHpRpm: maxHpRpm,
       maxNm: maxNm, maxNmRpm: maxNmRpm,
-      workshopName: workshop.name,
+      // watermark tekstowy tylko gdy brak logo
+      workshopName: logoImg == null ? workshop.name : '',
     );
 
     pdf.addPage(
@@ -79,11 +87,11 @@ class ExportService {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                  pw.Text(car.name,
+                  pw.Text(_ascii(car.name),
                       style: pw.TextStyle(font: font, fontSize: 13,
                           fontWeight: pw.FontWeight.bold)),
                   if (car.licensePlate != null)
-                    pw.Text(car.licensePlate!,
+                    pw.Text(_ascii(car.licensePlate!),
                         style: pw.TextStyle(font: font, fontSize: 9,
                             color: PdfColors.grey600)),
                   pw.SizedBox(height: 3),
@@ -125,9 +133,24 @@ class ExportService {
 
             pw.SizedBox(height: 4),
 
-            // ── Wykres jako SVG ──
+            // ── Wykres: SVG + logo jako watermark ──
             pw.Expanded(
-              child: pw.SvgImage(svg: chartSvg),
+              child: pw.Stack(
+                alignment: pw.Alignment.center,
+                children: [
+                  pw.SvgImage(svg: chartSvg),
+                  // Logo watermark na środku wykresu
+                  if (logoImg != null)
+                    pw.Opacity(
+                      opacity: 0.18,
+                      child: pw.Image(
+                        logoImg,
+                        height: 120,
+                        fit: pw.BoxFit.contain,
+                      ),
+                    ),
+                ],
+              ),
             ),
 
             pw.SizedBox(height: 4),
@@ -200,7 +223,7 @@ class ExportService {
     required double maxHpAxis, required double maxNmAxis,
     required double maxHp, required double maxHpRpm,
     required double maxNm, required double maxNmRpm,
-    required String workshopName,
+    String workshopName = '',
   }) {
     const W = 800.0, H = 300.0;
     const lm = 40.0, rm = 40.0, tm = 8.0, bm = 22.0;
@@ -259,14 +282,16 @@ class ExportService {
         'text-anchor="middle" font-size="8" fill="#666" font-family="Courier">'
         'RPM</text>');
 
-    // Watermark
-    final wm = workshopName.isNotEmpty
-        ? workshopName.toUpperCase() : 'DYNO DIY';
-    buf.write('<text x="${(lm+cw/2).toStringAsFixed(1)}" '
-        'y="${(tm+ch/2+10).toStringAsFixed(1)}" '
-        'text-anchor="middle" font-size="28" fill="#ccc" '
-        'fill-opacity="0.35" font-family="Courier" font-weight="bold">'
-        '$wm</text>');
+    // Watermark - tekst (logo wstawiamy przez pw.Stack nad SVG)
+    // Tylko jeśli nie ma logo - fallback tekstowy
+    if (workshopName.isNotEmpty) {
+      final wm = workshopName.toUpperCase();
+      buf.write('<text x="${(lm+cw/2).toStringAsFixed(1)}" '
+          'y="${(tm+ch/2+10).toStringAsFixed(1)}" '
+          'text-anchor="middle" font-size="22" fill="#bbb" '
+          'fill-opacity="0.25" font-family="Courier" font-weight="bold">'
+          '$wm</text>');
+    }
 
     // ── Krzywa Nm (zielona) — pod HP ──
     if (nmPts.length > 1) {
@@ -358,12 +383,16 @@ class ExportService {
       buf.writeln('      <DataPoints count="${run.graphDataPoints.length}">');
       for (final pt in run.graphDataPoints) {
         final parts = pt.split(';');
-        if (parts.length == 2) {
+        if (parts.length >= 2) {
           final speed = double.tryParse(parts[0]);
           final hp    = double.tryParse(parts[1]);
+          // Nm z danych (format v2: speed;hp;nm) lub oblicz z kFactor
+          final savedNm = parts.length >= 3 ? double.tryParse(parts[2]) : null;
           if (speed != null && hp != null) {
             final rpm = kFactor != null ? speed * kFactor : null;
-            final nm  = (rpm != null && rpm > 0) ? (hp * 9550.0) / rpm : null;
+            final nm  = (savedNm != null && savedNm > 0)
+                ? savedNm
+                : (rpm != null && rpm > 0) ? (hp * 9550.0) / rpm : null;
             buf.write('        <Point speedKmh="${parts[0]}" hp="${parts[1]}"');
             if (rpm != null) buf.write(' rpm="${rpm.toStringAsFixed(0)}"');
             if (nm  != null) buf.write(' nm="${nm.toStringAsFixed(1)}"');
@@ -451,6 +480,14 @@ class ExportService {
   String _e(String s) => s
       .replaceAll('&', '&amp;').replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+
+  String _ascii(String s) => s
+      .replaceAll('ą','a').replaceAll('ć','c').replaceAll('ę','e')
+      .replaceAll('ł','l').replaceAll('ń','n').replaceAll('ó','o')
+      .replaceAll('ś','s').replaceAll('ź','z').replaceAll('ż','z')
+      .replaceAll('Ą','A').replaceAll('Ć','C').replaceAll('Ę','E')
+      .replaceAll('Ł','L').replaceAll('Ń','N').replaceAll('Ó','O')
+      .replaceAll('Ś','S').replaceAll('Ź','Z').replaceAll('Ż','Z');
 
   String _fmtDate(DateTime dt) =>
       '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}'

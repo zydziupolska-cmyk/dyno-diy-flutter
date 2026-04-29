@@ -148,7 +148,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('DYNO DIY – Raport pomiaru',
+                    pw.Text('DYNO DIY - Raport pomiaru',
                         style: pw.TextStyle(
                             color: PdfColors.white,
                             fontSize: 20,
@@ -168,7 +168,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               _pdfRow('Nazwa', car.name),
               if (car.licensePlate != null) _pdfRow('Rejestracja', car.licensePlate!),
               _pdfRow('Waga sesji', '${run.sessionWeightKg.toStringAsFixed(0)} kg'),
-              _pdfRow('Napęd', car.transmission.name.toUpperCase()),
+              _pdfRow('Naped', car.transmission.name.toUpperCase()),
               pw.SizedBox(height: 16),
 
               // Wyniki
@@ -195,7 +195,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   pw.TableRow(
                     decoration: const pw.BoxDecoration(color: PdfColors.grey200),
                     children: [
-                      _pdfCell('Prędkość (km/h)', bold: true),
+                      _pdfCell('km/h', bold: true),
                       _pdfCell('Moc (KM)', bold: true),
                     ],
                   ),
@@ -208,7 +208,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
               pw.Spacer(),
               pw.Divider(),
-              pw.Text('Wygenerowano przez Dyno DIY App • ${DateTime.now().year}',
+              pw.Text('Wygenerowano przez Dyno DIY App ${DateTime.now().year}',
                   style: const pw.TextStyle(color: PdfColors.grey, fontSize: 10)),
             ],
           );
@@ -226,6 +226,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       subject: 'Dyno DIY – ${car.name} – ${_formatDate(run.timestamp)}',
     );
   }
+
 
   pw.Widget _pdfRow(String label, String value) => pw.Padding(
         padding: const pw.EdgeInsets.symmetric(vertical: 3),
@@ -273,7 +274,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final spots = <FlSpot>[];
     for (final point in run.graphDataPoints) {
       final parts = point.split(';');
-      if (parts.length == 2) {
+      if (parts.length >= 2) {
         final x = double.tryParse(parts[0]);
         final y = double.tryParse(parts[1]);
         if (x != null && y != null) spots.add(FlSpot(x, y));
@@ -711,12 +712,30 @@ class RunDetailScreen extends StatelessWidget {
     return spots;
   }
 
+  List<FlSpot> _parseNmSpots() {
+    final spots = <FlSpot>[];
+    for (final point in run.graphDataPoints) {
+      final parts = point.split(';');
+      if (parts.length >= 3) {
+        final x  = double.tryParse(parts[0]);
+        final nm = double.tryParse(parts[2]);
+        if (x != null && nm != null && nm > 0) spots.add(FlSpot(x, nm));
+      }
+    }
+    spots.sort((a, b) => a.x.compareTo(b.x));
+    return spots;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final spots = _parseSpots();
+    final spots   = _parseSpots();
+    final nmSpots = _parseNmSpots();
     final maxHp = spots.isEmpty
         ? 0.0
         : spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
+    final maxNm = nmSpots.isEmpty
+        ? 0.0
+        : nmSpots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
 
     return Scaffold(
       appBar: AppBar(
@@ -785,9 +804,23 @@ class RunDetailScreen extends StatelessWidget {
                             style: TextStyle(color: Colors.grey)))
                     : LineChart(
                         LineChartData(
-                          minX: 30, maxX: 180, minY: 0,
+                          minX: 30, maxX: 200, minY: 0,
                           maxY: maxHp + 50,
                           lineBarsData: [
+                            // Nm (niebieska, pod HP)
+                            if (nmSpots.isNotEmpty)
+                              LineChartBarData(
+                                spots: nmSpots,
+                                isCurved: true,
+                                curveSmoothness: 0.3,
+                                color: Colors.blueAccent,
+                                barWidth: 3,
+                                dotData: const FlDotData(show: false),
+                                belowBarData: BarAreaData(
+                                    show: true,
+                                    color: Colors.blueAccent.withValues(alpha: 0.04)),
+                              ),
+                            // HP (zielona, na wierzchu)
                             LineChartBarData(
                               spots: spots,
                               isCurved: true,
@@ -880,17 +913,45 @@ class _StatCard extends StatelessWidget {
 // ============================================================
 //  PORÓWNANIE WYKRESÓW
 // ============================================================
-class ComparisonScreen extends StatelessWidget {
+class ComparisonScreen extends StatefulWidget {
   final List<DynoRun> runs;
   const ComparisonScreen({super.key, required this.runs});
 
-  List<FlSpot> _parseSpots(DynoRun run) {
+  @override
+  State<ComparisonScreen> createState() => _ComparisonScreenState();
+}
+
+class _ComparisonScreenState extends State<ComparisonScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  // Kolory dla każdego pomiaru
+  static const _colors = [
+    Colors.greenAccent,
+    Colors.orangeAccent,
+    Colors.purpleAccent,
+    Colors.cyanAccent,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  List<FlSpot> _parseHpSpots(DynoRun run) {
     final spots = <FlSpot>[];
-    for (final point in run.graphDataPoints) {
-      final parts = point.split(';');
-      if (parts.length == 2) {
-        final x = double.tryParse(parts[0]);
-        final y = double.tryParse(parts[1]);
+    for (final pt in run.graphDataPoints) {
+      final p = pt.split(';');
+      if (p.length >= 2) {
+        final x = double.tryParse(p[0]);
+        final y = double.tryParse(p[1]);
         if (x != null && y != null) spots.add(FlSpot(x, y));
       }
     }
@@ -898,41 +959,121 @@ class ComparisonScreen extends StatelessWidget {
     return spots;
   }
 
-  String _formatDate(DateTime dt) =>
+  List<FlSpot> _parseNmSpots(DynoRun run) {
+    final spots = <FlSpot>[];
+    for (final pt in run.graphDataPoints) {
+      final p = pt.split(';');
+      if (p.length >= 3) {
+        final x  = double.tryParse(p[0]);
+        final nm = double.tryParse(p[2]);
+        if (x != null && nm != null && nm > 0) spots.add(FlSpot(x, nm));
+      }
+    }
+    spots.sort((a, b) => a.x.compareTo(b.x));
+    return spots;
+  }
+
+  String _fmtDate(DateTime dt) =>
       '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
 
-  @override
-  Widget build(BuildContext context) {
-    final colors = [
-      Colors.greenAccent,
-      Colors.blueAccent,
-      Colors.orangeAccent,
-      Colors.purpleAccent,
-    ];
-    double maxHp = 0;
-    final barData = <LineChartBarData>[];
+  Widget _buildChart({
+    required List<List<FlSpot>> allSpots,
+    required String yLabel,
+    required Color axisColor,
+  }) {
+    double maxY = 0;
+    final bars = <LineChartBarData>[];
 
-    for (int i = 0; i < runs.length; i++) {
-      final spots = _parseSpots(runs[i]);
+    for (int i = 0; i < allSpots.length; i++) {
+      final spots = allSpots[i];
       if (spots.isNotEmpty) {
         final m = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
-        if (m > maxHp) maxHp = m;
+        if (m > maxY) maxY = m;
       }
-      barData.add(LineChartBarData(
+      bars.add(LineChartBarData(
         spots: spots,
         isCurved: true,
         curveSmoothness: 0.3,
-        color: colors[i % colors.length],
+        color: _colors[i % _colors.length],
         barWidth: 3,
         dotData: const FlDotData(show: false),
+        belowBarData: BarAreaData(
+          show: true,
+          color: _colors[i % _colors.length].withValues(alpha: 0.04),
+        ),
       ));
     }
+
+    if (maxY == 0) {
+      return const Center(
+        child: Text('Brak danych do porównania',
+            style: TextStyle(color: Colors.grey)),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.only(right: 20, top: 20, bottom: 8),
+      decoration: BoxDecoration(
+          color: Colors.grey[950], borderRadius: BorderRadius.circular(16)),
+      child: LineChart(
+        LineChartData(
+          minX: 30, maxX: 200, minY: 0,
+          maxY: maxY + maxY * 0.1,
+          lineBarsData: bars,
+          titlesData: FlTitlesData(
+            rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false)),
+            topTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false)),
+            leftTitles: AxisTitles(
+              axisNameWidget: Text(yLabel,
+                  style: TextStyle(color: axisColor, fontSize: 11)),
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 42,
+                getTitlesWidget: (v, m) => Text(v.toInt().toString(),
+                    style: const TextStyle(color: Colors.grey, fontSize: 10)),
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              axisNameWidget: const Text('km/h',
+                  style: TextStyle(color: Colors.grey, fontSize: 11)),
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 28,
+                getTitlesWidget: (v, m) => Text(v.toInt().toString(),
+                    style: const TextStyle(color: Colors.grey, fontSize: 10)),
+              ),
+            ),
+          ),
+          gridData: const FlGridData(show: true, drawVerticalLine: false),
+          borderData: FlBorderData(show: false),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hpData = widget.runs.map(_parseHpSpots).toList();
+    final nmData = widget.runs.map(_parseNmSpots).toList();
+    final hasNm  = nmData.any((s) => s.isNotEmpty);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Porównanie'),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Moc (KM)'),
+            Tab(text: 'Moment (Nm)'),
+          ],
+          indicatorColor: Colors.greenAccent,
+          labelColor: Colors.greenAccent,
+          unselectedLabelColor: Colors.grey,
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -940,78 +1081,68 @@ class ComparisonScreen extends StatelessWidget {
           children: [
             // Legenda
             Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              children: List.generate(
-                runs.length,
-                (i) => Row(
+              spacing: 10,
+              runSpacing: 6,
+              children: List.generate(widget.runs.length, (i) {
+                final run = widget.runs[i];
+                return Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                        width: 24,
-                        height: 3,
-                        color: colors[i % colors.length]),
-                    const SizedBox(width: 6),
+                        width: 20, height: 3,
+                        color: _colors[i % _colors.length]),
+                    const SizedBox(width: 5),
                     Text(
-                      '${_formatDate(runs[i].timestamp)} – '
-                      '${runs[i].maxEngineHp.toStringAsFixed(0)} KM'
-                      '${runs[i].maxEngineTorque > 0 ? " / ${runs[i].maxEngineTorque.toStringAsFixed(0)} Nm" : ""}',
+                      '${_fmtDate(run.timestamp)}  '
+                      '${run.maxEngineHp.toStringAsFixed(0)} KM'
+                      '${run.maxEngineTorque > 0 ? " / ${run.maxEngineTorque.toStringAsFixed(0)} Nm" : ""}',
                       style: TextStyle(
-                          color: colors[i % colors.length], fontSize: 12),
+                          color: _colors[i % _colors.length], fontSize: 11),
                     ),
                   ],
-                ),
-              ),
+                );
+              }),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            // Wykresy na zakładkach
             Expanded(
-              child: Container(
-                padding: const EdgeInsets.only(right: 20, top: 20),
-                decoration: BoxDecoration(
-                    color: Colors.grey[950],
-                    borderRadius: BorderRadius.circular(16)),
-                child: LineChart(
-                  LineChartData(
-                    minX: 30, maxX: 180, minY: 0,
-                    maxY: maxHp + 50,
-                    lineBarsData: barData,
-                    titlesData: FlTitlesData(
-                      rightTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false)),
-                      topTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false)),
-                      leftTitles: AxisTitles(
-                        axisNameWidget: const Text('KM',
-                            style:
-                                TextStyle(color: Colors.grey, fontSize: 11)),
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 40,
-                          getTitlesWidget: (v, m) => Text(
-                              v.toInt().toString(),
-                              style: const TextStyle(
-                                  color: Colors.grey, fontSize: 10)),
-                        ),
-                      ),
-                      bottomTitles: AxisTitles(
-                        axisNameWidget: const Text('km/h',
-                            style:
-                                TextStyle(color: Colors.grey, fontSize: 11)),
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 28,
-                          getTitlesWidget: (v, m) => Text(
-                              v.toInt().toString(),
-                              style: const TextStyle(
-                                  color: Colors.grey, fontSize: 10)),
-                        ),
-                      ),
-                    ),
-                    gridData:
-                        const FlGridData(show: true, drawVerticalLine: false),
-                    borderData: FlBorderData(show: false),
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  // Zakładka KM
+                  _buildChart(
+                    allSpots: hpData,
+                    yLabel: 'KM',
+                    axisColor: Colors.greenAccent,
                   ),
-                ),
+                  // Zakładka Nm
+                  hasNm
+                      ? _buildChart(
+                          allSpots: nmData,
+                          yLabel: 'Nm',
+                          axisColor: Colors.blueAccent,
+                        )
+                      : const Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.info_outline,
+                                  color: Colors.grey, size: 48),
+                              SizedBox(height: 12),
+                              Text(
+                                'Brak danych Nm.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                              Text(
+                                'Wykonaj nowy pomiar z kalibracja.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.grey, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                ],
               ),
             ),
           ],

@@ -280,7 +280,7 @@ class _SessionNavigationState extends State<SessionNavigation> {
     // Listę ekranów przenosimy tutaj, żeby mogła "widzieć" widget.car
     final List<Widget> screens = [
       GarageScreen(car: widget.car),
-      const CalibrationScreen(),
+      CalibrationScreen(carId: widget.car.id),
       _PomiarTab(car: widget.car),
       const HistoryScreen(),
     ];
