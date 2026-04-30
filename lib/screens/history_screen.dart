@@ -679,7 +679,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 // ============================================================
 //  SZCZEGÓŁY POMIARU
 // ============================================================
-class RunDetailScreen extends StatelessWidget {
+class RunDetailScreen extends StatefulWidget {
   final DynoRun run;
   final CarProfile car;
   final VoidCallback onExportPdf;
@@ -695,12 +695,32 @@ class RunDetailScreen extends StatelessWidget {
     required this.onExportXml,
   });
 
+  @override
+  State<RunDetailScreen> createState() => _RunDetailScreenState();
+}
+
+class _RunDetailScreenState extends State<RunDetailScreen> {
+  double _smoothing = 0.0; // 0 = brak filtra, 1 = max
+
+  // Zastosuj EMA do listy punktów
+  List<FlSpot> _applySmoothing(List<FlSpot> raw) {
+    if (_smoothing < 0.05 || raw.length < 2) return raw;
+    final result = <FlSpot>[];
+    double prev = raw.first.y;
+    for (final spot in raw) {
+      final smoothed = spot.y * (1 - _smoothing) + prev * _smoothing;
+      prev = smoothed;
+      result.add(FlSpot(spot.x, smoothed));
+    }
+    return result;
+  }
+
   String _formatDate(DateTime dt) =>
       '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}  ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 
   List<FlSpot> _parseSpots() {
     final spots = <FlSpot>[];
-    for (final point in run.graphDataPoints) {
+    for (final point in widget.run.graphDataPoints) {
       final parts = point.split(';');
       if (parts.length >= 2) {
         final x = double.tryParse(parts[0]);
@@ -714,7 +734,7 @@ class RunDetailScreen extends StatelessWidget {
 
   List<FlSpot> _parseNmSpots() {
     final spots = <FlSpot>[];
-    for (final point in run.graphDataPoints) {
+    for (final point in widget.run.graphDataPoints) {
       final parts = point.split(';');
       if (parts.length >= 3) {
         final x  = double.tryParse(parts[0]);
@@ -728,34 +748,33 @@ class RunDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final spots   = _parseSpots();
-    final nmSpots = _parseNmSpots();
-    final maxHp = spots.isEmpty
-        ? 0.0
+    final spots   = _applySmoothing(_parseSpots());
+    final nmSpots = _applySmoothing(_parseNmSpots());
+    final maxHp = spots.isEmpty ? 0.0
         : spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
-    // maxNm używane do skali wykresu
-    final maxVal = [maxHp, nmSpots.isEmpty ? 0.0 : nmSpots.map((s) => s.y).reduce((a, b) => a > b ? a : b)].reduce((a,b) => a > b ? a : b);
+    final maxNm = nmSpots.isEmpty ? 0.0
+        : nmSpots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(car.name),
+        title: Text(widget.car.name),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.print),
             tooltip: 'Wydruk A4 (RPM)',
-            onPressed: onExportPrintPdf,
+            onPressed: widget.onExportPrintPdf,
           ),
           IconButton(
             icon: const Icon(Icons.picture_as_pdf),
             tooltip: 'PDF mobilny',
-            onPressed: onExportPdf,
+            onPressed: widget.onExportPdf,
           ),
           IconButton(
             icon: const Icon(Icons.code),
             tooltip: 'Eksportuj XML',
-            onPressed: onExportXml,
+            onPressed: widget.onExportXml,
           ),
         ],
       ),
@@ -763,7 +782,7 @@ class RunDetailScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Text(_formatDate(run.timestamp),
+            Text(_formatDate(widget.run.timestamp),
                 style: const TextStyle(color: Colors.grey, fontSize: 13)),
             const SizedBox(height: 12),
             // Statystyki
@@ -772,24 +791,48 @@ class RunDetailScreen extends StatelessWidget {
               children: [
                 _StatCard(
                     label: 'Moc max',
-                    value: '${run.maxEngineHp.toStringAsFixed(1)} KM',
+                    value: '${maxHp.toStringAsFixed(1)} KM',
                     color: Colors.greenAccent),
-                if (run.maxEngineTorque > 0)
+                if (maxNm > 0)
                   _StatCard(
                       label: 'Moment max',
-                      value: '${run.maxEngineTorque.toStringAsFixed(1)} Nm',
+                      value: '${maxNm.toStringAsFixed(1)} Nm',
                       color: Colors.blueAccent),
                 _StatCard(
                     label: 'Waga',
-                    value: '${run.sessionWeightKg.toStringAsFixed(0)} kg',
+                    value: '${widget.run.sessionWeightKg.toStringAsFixed(0)} kg',
                     color: Colors.orangeAccent),
                 _StatCard(
                     label: 'DIN',
-                    value: '×${run.correctionFactor.toStringAsFixed(3)}',
+                    value: '×${widget.run.correctionFactor.toStringAsFixed(3)}',
                     color: Colors.purpleAccent),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
+            // Suwak wygładzania
+            Row(children: [
+              const Icon(Icons.tune, color: Colors.grey, size: 16),
+              const SizedBox(width: 6),
+              const Text('Filtr:', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              Expanded(
+                child: Slider(
+                  value: _smoothing,
+                  min: 0.0, max: 0.9, divisions: 9,
+                  activeColor: Colors.greenAccent,
+                  inactiveColor: Colors.grey,
+                  label: _smoothing == 0 ? 'RAW' : '${(_smoothing * 100).toStringAsFixed(0)}%',
+                  onChanged: (v) => setState(() => _smoothing = v),
+                ),
+              ),
+              SizedBox(width: 40,
+                child: Text(
+                  _smoothing == 0 ? 'RAW' : '${(_smoothing * 100).toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    color: _smoothing == 0 ? Colors.orangeAccent : Colors.greenAccent,
+                    fontSize: 11, fontWeight: FontWeight.bold),
+                )),
+            ]),
+            const SizedBox(height: 4),
             // Wykres
             Expanded(
               child: Container(

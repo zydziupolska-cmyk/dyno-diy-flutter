@@ -1,4 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 // Import modelu z dyno_screen przez dynamic — unikamy circular import
 // Przekazujemy dane jako proste listy
@@ -45,6 +48,22 @@ class _GpsReplayScreenState extends State<GpsReplayScreen> {
     }
   }
 
+  Future<void> _exportCsv() async {
+    final buf = StringBuffer();
+    buf.writeln('idx,speed_kmh,dt_ms,phase,rejected,reason');
+    for (int i = 0; i < widget.samples.length; i++) {
+      final s = widget.samples[i];
+      buf.writeln('${i+1},${s.speed.toStringAsFixed(3)},'
+          '${(s.dt*1000).toStringAsFixed(0)},'
+          '${s.phase},${s.rejected ? 1 : 0},"${s.reason}"');
+    }
+    final dir  = await getTemporaryDirectory();
+    final file = File('${dir.path}/gps_replay_${DateTime.now().millisecondsSinceEpoch}.csv');
+    await file.writeAsString(buf.toString());
+    await Share.shareXFiles([XFile(file.path)],
+        subject: 'GPS Replay – dane pomiarowe');
+  }
+
   @override
   Widget build(BuildContext context) {
     final total    = widget.samples.length;
@@ -59,6 +78,13 @@ class _GpsReplayScreenState extends State<GpsReplayScreen> {
         title: const Text('Replay GPS'),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download),
+            tooltip: 'Eksportuj CSV',
+            onPressed: _exportCsv,
+          ),
+        ],
       ),
       body: Column(
         children: [
