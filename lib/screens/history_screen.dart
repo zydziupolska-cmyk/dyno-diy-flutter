@@ -733,9 +733,8 @@ class RunDetailScreen extends StatelessWidget {
     final maxHp = spots.isEmpty
         ? 0.0
         : spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
-    final maxNm = nmSpots.isEmpty
-        ? 0.0
-        : nmSpots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
+    // maxNm używane do skali wykresu
+    final maxVal = [maxHp, nmSpots.isEmpty ? 0.0 : nmSpots.map((s) => s.y).reduce((a, b) => a > b ? a : b)].reduce((a,b) => a > b ? a : b);
 
     return Scaffold(
       appBar: AppBar(

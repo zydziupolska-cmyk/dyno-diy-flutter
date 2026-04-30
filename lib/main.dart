@@ -6,6 +6,8 @@ import 'screens/prelaunch_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/add_car_screen.dart';
 import 'screens/workshop_settings_screen.dart';
+import 'screens/gps_diagnostics_screen.dart';
+import 'screens/gps_replay_screen.dart';
 import 'services/database_service.dart';
 import 'models/car_profile.dart';
 import 'services/bluetooth_service.dart';
@@ -59,6 +61,23 @@ class MainMenuScreen extends StatefulWidget {
 }
 
 class _MainMenuScreenState extends State<MainMenuScreen> {
+  int _tapCount = 0;
+  DateTime? _lastTap;
+
+  void _handleModuleTap() {
+    final now = DateTime.now();
+    if (_lastTap != null && now.difference(_lastTap!).inSeconds > 2) {
+      _tapCount = 0; // reset po 2s przerwy
+    }
+    _lastTap = now;
+    _tapCount++;
+    if (_tapCount >= 5) {
+      _tapCount = 0;
+      Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const GpsDiagnosticsScreen()));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -108,8 +127,11 @@ StreamBuilder<bool>(
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Moduł ESP32-M9N', 
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              GestureDetector(
+                onTap: _handleModuleTap,
+                child: const Text('Moduł ESP32-M9N',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
               
               // --- DYNAMICZNA SEKCJA SATELITÓW ---
               if (!connected)
