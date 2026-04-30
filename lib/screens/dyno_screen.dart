@@ -42,8 +42,15 @@ class _DynoScreenState extends State<DynoScreen> {
   double    _lastSpeed        = 0.0;
   double    _lastChangedSpeed = -1.0; // ostatnia ZMIENIONA prędkość GPS
   DateTime? _lastChangedTime;          // czas ostatniej ZMIANY
+  double    _smoothedSpeed   = 0.0;   // EMA wygładzony sygnał prędkości
+  bool      _warmingUp      = false;  // delay 1s po starcie
+  DateTime? _startTime;               // czas naciśnięcia START
   DateTime? _lastSavedTime;            // czas ostatniego ZAPISANEGO punktu
   DateTime? _lastTime;
+
+  // Countdown przed pomiarem
+  int    _countdown     = 0;
+  Timer? _countdownTimer;
 
   // Coasting timer
   double    _coastingElapsed  = 0.0;
@@ -68,6 +75,7 @@ class _DynoScreenState extends State<DynoScreen> {
   void dispose() {
     _speedSub?.cancel();
     _coastingTimer?.cancel();
+    _countdownTimer?.cancel();
     super.dispose();
   }
 
@@ -75,6 +83,8 @@ class _DynoScreenState extends State<DynoScreen> {
     _currentSpeed = _currentHp = _currentNm = _maxHp = _maxNm = 0;
     _lastSpeed = _lastChangedSpeed = -1.0;
     _lastChangedTime = _lastSavedTime = _lastTime = null;
+    _countdown = 0;
+    _countdownTimer?.cancel();
     _coastingElapsed = 0;
     _coastingStart = null;
     _coastingTimer?.cancel();
@@ -93,11 +103,22 @@ class _DynoScreenState extends State<DynoScreen> {
     }
     setState(() {
       _reset();
-      _state = MeasurementState.accelerating;
-      _lastTime = DateTime.now();
+      _countdown = 3;
+      _state = MeasurementState.idle; // czekamy na countdown
     });
 
-    _speedSub = btService.speedStream.listen(_onSpeed);
+    // Countdown 3..2..1..START
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      setState(() => _countdown--);
+      if (_countdown <= 0) {
+        t.cancel();
+        setState(() {
+          _state    = MeasurementState.accelerating;
+          _lastTime = DateTime.now();
+        });
+        _speedSub = btService.speedStream.listen(_onSpeed);
+      }
+    });
   }
 
   void _onSpeed(double gpsSpeed) {
@@ -110,9 +131,38 @@ class _DynoScreenState extends State<DynoScreen> {
         : 0.1;
     if (dt < 0.02) return;
 
-    // ── Zapisz próbkę GPS do replay ─────────────────────────────────────────
+    // ── Delay 1s po starcie ─────────────────────────────────────────────
+    if (_warmingUp) {
+      final elapsed = now.difference(_startTime!).inMilliseconds;
+      if (elapsed < 1000) {
+        // Zbieramy próbki do replay ale nie liczymy mocy
+        _allSamples.add(GpsSample(
+          speed: gpsSpeed, dt: dt, rejected: true,
+          reason: 'Warmup ${elapsed}ms',
+          phase: 'ACC',
+        ));
+        // Wygrzewamy EMA żeby była gotowa
+        if (_smoothedSpeed == 0.0) _smoothedSpeed = gpsSpeed;
+        else _smoothedSpeed = gpsSpeed * 0.3 + _smoothedSpeed * 0.7;
+        setState(() { _currentSpeed = gpsSpeed; _lastTime = now; });
+        return;
+      }
+      _warmingUp  = false;
+      _lastSpeed  = _smoothedSpeed; // start od wygładzonej prędkości
+    }
+
+    // ── Wygładź GPS na wejściu (EMA alpha=0.3) ────────────────────────────
+    // Redukuje szum ±0.5 km/h do ±0.1 km/h bez opóźnienia szczytu
+    if (_smoothedSpeed == 0.0) {
+      _smoothedSpeed = gpsSpeed;
+    } else {
+      _smoothedSpeed = gpsSpeed * 0.3 + _smoothedSpeed * 0.7;
+    }
+    final smoothGps = _smoothedSpeed;
+
+    // ── Zapisz próbkę GPS do replay (surowa) ────────────────────────────────
     _allSamples.add(GpsSample(
-      speed:    gpsSpeed,
+      speed:    gpsSpeed,   // surowa prędkość do replay
       dt:       dt,
       rejected: false,
       reason:   '',
@@ -123,7 +173,7 @@ class _DynoScreenState extends State<DynoScreen> {
     // GPS NMEA/NEO-M9N może wysyłać tę samą wartość przez kilka próbek
     // Używamy dt od ostatniej ZMIANY do prawidłowego przyspieszenia
     final speedChanged = (_lastChangedSpeed < 0) ||
-        (gpsSpeed - _lastChangedSpeed).abs() > 0.01;
+        (smoothGps - _lastChangedSpeed).abs() > 0.05;
 
     // dt od ostatniej ZMIANY prędkości (prawidłowe przyspieszenie)
     // Przy pierwszej zmianie używamy dt od ostatniej próbki jako fallback
@@ -132,25 +182,26 @@ class _DynoScreenState extends State<DynoScreen> {
         : dt;
 
     if (speedChanged) {
-      _lastChangedSpeed = gpsSpeed;
+      _lastChangedSpeed = smoothGps;
       _lastChangedTime  = now;
     }
 
     // ── PRZYSPIESZANIE ───────────────────────────────────────────────────────
     if (_state == MeasurementState.accelerating) {
-      if (gpsSpeed <= _lastSpeed + 0.3) {
+      // Detekcja końca przyspieszania na wygładzonej prędkości
+      if (smoothGps <= _lastSpeed + 0.2) {
         _noAccelCount++;
       } else {
         _noAccelCount = 0;
       }
 
-      final drop     = gpsSpeed < _lastSpeed - 2.0;
-      final noAccel  = _noAccelCount >= 15 && gpsSpeed > 30.0;
+      final drop    = smoothGps < _lastSpeed - 3.0;  // wyraźny spadek
+      final noAccel = _noAccelCount >= 25 && smoothGps > 30.0;  // ~1.1s
 
       if (drop || noAccel) {
         _startCoasting();
-      } else if (speedChanged && gpsSpeed > _lastSpeed + 0.1
-                 && dtFromChange > 0.05) {
+      } else if (smoothGps > _lastSpeed + 0.05
+                 && dtFromChange != null && dtFromChange > 0.05) {
         // Oblicz moc używając dt od ostatniej ZMIANY prędkości
         final dtSaved = _lastSavedTime != null
             ? now.difference(_lastSavedTime!).inMilliseconds / 1000.0
@@ -162,12 +213,12 @@ class _DynoScreenState extends State<DynoScreen> {
 
         final hpWheel = PhysicsEngine.calculateWheelHp(
           v1KmH:     lastSpdKmh,
-          v2KmH:     gpsSpeed,
+          v2KmH:     smoothGps,
           timeDelta: dtSaved.clamp(0.05, 10.0),
           weight:    _weight,
         );
 
-        final xVal  = _useRpm ? gpsSpeed * widget.kFactor! : gpsSpeed;
+        final xVal  = _useRpm ? smoothGps * widget.kFactor! : smoothGps;
         final lastX = _spots.isNotEmpty ? _spots.last.x : 0.0;
         final step  = _useRpm ? 50.0 : 1.0;
 
@@ -193,10 +244,10 @@ class _DynoScreenState extends State<DynoScreen> {
 
     // ── WYBIEG ───────────────────────────────────────────────────────────────
     else if (_state == MeasurementState.coasting) {
-      if (speedChanged && _lastSpeed > gpsSpeed && dtFromChange > 0.05) {
+      if (speedChanged && _lastSpeed > smoothGps && dtFromChange > 0.05) {
         final lossRaw = PhysicsEngine.calculateCoastLossHp(
           v1KmH:     _lastSpeed,
-          v2KmH:     gpsSpeed,
+          v2KmH:     smoothGps,
           timeDelta: dtFromChange.clamp(0.05, 10.0),
           weight:    _weight,
         );
@@ -210,8 +261,8 @@ class _DynoScreenState extends State<DynoScreen> {
     }
 
     setState(() {
-      _currentSpeed = gpsSpeed;
-      _lastSpeed    = gpsSpeed;
+      _currentSpeed = gpsSpeed;    // surowa - responsywna
+      _lastSpeed    = smoothGps;   // wygładzona - do obliczeń
       _lastTime     = now;
     });
   }
@@ -315,7 +366,10 @@ class _DynoScreenState extends State<DynoScreen> {
     String statusText  = btService.isConnected ? 'GOTOWY DO STARTU' : 'CZEKAM NA ESP32...';
     Color  statusColor = btService.isConnected ? Colors.grey : Colors.orangeAccent;
 
-    if (_state == MeasurementState.accelerating) {
+    if (_countdown > 0) {
+      statusText  = 'START ZA $_countdown...';
+      statusColor = Colors.yellowAccent;
+    } else if (_state == MeasurementState.accelerating) {
       statusText  = 'PRZYSPIESZANIE';
       statusColor = Colors.greenAccent;
     } else if (_state == MeasurementState.coasting) {
