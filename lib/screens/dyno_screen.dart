@@ -43,6 +43,7 @@ class _DynoScreenState extends State<DynoScreen> {
   double    _lastChangedSpeed = -1.0; // ostatnia ZMIENIONA prędkość GPS
   DateTime? _lastChangedTime;          // czas ostatniej ZMIANY
   double    _smoothedSpeed   = 0.0;   // EMA wygładzony sygnał prędkości
+  double    _lastSmoothedHp  = 0.0;   // EMA wygładzony sygnał mocy
   bool      _warmingUp      = false;  // delay 1s po starcie
   DateTime? _startTime;               // czas naciśnięcia START
   DateTime? _lastSavedTime;            // czas ostatniego ZAPISANEGO punktu
@@ -123,13 +124,13 @@ class _DynoScreenState extends State<DynoScreen> {
 
   void _onSpeed(double gpsSpeed) {
     if (_state == MeasurementState.idle ||
-        _state == MeasurementState.finished) return;
+        _state == MeasurementState.finished) { return; }
 
     final now = DateTime.now();
     final dt  = _lastTime != null
         ? now.difference(_lastTime!).inMilliseconds / 1000.0
         : 0.1;
-    if (dt < 0.02) return;
+    if (dt < 0.02) { return; }
 
     // ── Delay 1s po starcie ─────────────────────────────────────────────
     if (_warmingUp) {
@@ -142,8 +143,11 @@ class _DynoScreenState extends State<DynoScreen> {
           phase: 'ACC',
         ));
         // Wygrzewamy EMA żeby była gotowa
-        if (_smoothedSpeed == 0.0) _smoothedSpeed = gpsSpeed;
-        else _smoothedSpeed = gpsSpeed * 0.3 + _smoothedSpeed * 0.7;
+        if (_smoothedSpeed == 0.0) {
+          _smoothedSpeed = gpsSpeed;
+        } else {
+          _smoothedSpeed = gpsSpeed * 0.3 + _smoothedSpeed * 0.7;
+        }
         setState(() { _currentSpeed = gpsSpeed; _lastTime = now; });
         return;
       }
@@ -200,45 +204,44 @@ class _DynoScreenState extends State<DynoScreen> {
 
       if (drop || noAccel) {
         _startCoasting();
-      } else if (smoothGps > _lastSpeed + 0.05
-                 && dtFromChange != null && dtFromChange > 0.05) {
-        // Oblicz moc używając dt od ostatniej ZMIANY prędkości
-        final dtSaved = _lastSavedTime != null
-            ? now.difference(_lastSavedTime!).inMilliseconds / 1000.0
-            : dtFromChange;
+      } else if (smoothGps > _lastSpeed + 0.05 && dt > 0.02) {
+        // Walidacja: max przyspieszenie ~1.2g = 42 km/h/s
+        final maxDelta = 42.0 * dt;
+        if ((smoothGps - _lastSpeed) <= maxDelta) {
+          // Moc z tej próbki GPS (dt ~44ms)
+          final hpRaw = PhysicsEngine.calculateWheelHp(
+            v1KmH:     _lastSpeed,
+            v2KmH:     smoothGps,
+            timeDelta: dt.clamp(0.02, 0.5),
+            weight:    _weight,
+          );
 
-        final lastSpdKmh = _spots.isNotEmpty
-            ? (_useRpm ? _spots.last.x / widget.kFactor! : _spots.last.x)
-            : _lastChangedSpeed;
+          // EMA na mocy (alpha=0.6)
+          if (_lastSmoothedHp == 0) _lastSmoothedHp = hpRaw;
+          final hpEma = hpRaw * 0.4 + _lastSmoothedHp * 0.6;
+          _lastSmoothedHp = hpEma;
 
-        final hpWheel = PhysicsEngine.calculateWheelHp(
-          v1KmH:     lastSpdKmh,
-          v2KmH:     smoothGps,
-          timeDelta: dtSaved.clamp(0.05, 10.0),
-          weight:    _weight,
-        );
+          final xVal  = _useRpm ? smoothGps * widget.kFactor! : smoothGps;
+          final lastX = _spots.isNotEmpty ? _spots.last.x : 0.0;
+          final step  = _useRpm ? 30.0 : 0.5;
 
-        final xVal  = _useRpm ? smoothGps * widget.kFactor! : smoothGps;
-        final lastX = _spots.isNotEmpty ? _spots.last.x : 0.0;
-        final step  = _useRpm ? 50.0 : 1.0;
-
-        double nmLive = 0;
-        if (_useRpm) {
-          final rpm = gpsSpeed * widget.kFactor!;
-          if (rpm > 0) nmLive = (hpWheel * 9550.0) / rpm;
-        }
-
-        setState(() {
-          _currentHp = hpWheel;
-          _currentNm = nmLive;
-          if (hpWheel > _maxHp) _maxHp = hpWheel;
-          if (nmLive  > _maxNm) _maxNm = nmLive;
-
-          if (gpsSpeed > 20 && hpWheel > 5 && xVal >= lastX + step) {
-            _spots.add(FlSpot(xVal, hpWheel));
-            _lastSavedTime = now;
+          double nmLive = 0;
+          if (_useRpm) {
+            final rpm = smoothGps * widget.kFactor!;
+            if (rpm > 0) nmLive = (hpEma * 9550.0) / rpm;
           }
-        });
+
+          setState(() {
+            _currentHp = hpEma;
+            _currentNm = nmLive;
+            if (hpEma > _maxHp) _maxHp = hpEma;
+            if (nmLive > _maxNm) _maxNm = nmLive;
+
+            if (smoothGps > 20 && hpEma > 5 && xVal >= lastX + step) {
+              _spots.add(FlSpot(xVal, hpEma));
+            }
+          });
+        }
       }
     }
 
