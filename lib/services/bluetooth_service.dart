@@ -16,6 +16,11 @@ class AppBleService {
   final _satellitesController = StreamController<int>.broadcast();
 
   Stream<double> get speedStream => _speedController.stream;
+  
+  final _gpsTimeController = StreamController<int>.broadcast();
+  Stream<int> get gpsTimeStream => _gpsTimeController.stream;
+  int _lastGpsTimeMs = 0;
+  int get lastGpsTimeMs => _lastGpsTimeMs;
   Stream<bool> get connectionStream => _connectionController.stream;
   Stream<int> get satellitesStream => _satellitesController.stream;
 
@@ -137,6 +142,13 @@ class AppBleService {
       if (parts.length >= 2) {
         final sats = int.tryParse(parts[1]);
         if (sats != null && sats >= 0) _satellitesController.add(sats);
+      }
+      if (parts.length >= 3) {
+        final gpsT = int.tryParse(parts[2]);
+        if (gpsT != null && gpsT > 0) {
+          _lastGpsTimeMs = gpsT;
+          _gpsTimeController.add(gpsT);
+        }
       }
     } catch (e) {
       print('[BLE] Blad parsowania: $e');

@@ -2,7 +2,6 @@ import 'dart:math';
 
 class PhysicsEngine {
   static const double gravity           = 9.81;
-  static const double airDensity        = 1.225;
   static const double rollingResistance = 0.015;
 
   // ── Korekcja DIN 70020 ─────────────────────────────────────────────────────
@@ -11,79 +10,169 @@ class PhysicsEngine {
     return (1013.0 / pressureHpa) * sqrt((273.15 + tempC) / 293.15);
   }
 
-  // ── Moc na kołach (faza przyspieszania) ────────────────────────────────────
-  //
-  // METODA DYNOMET: liczymy TYLKO siłę bezwładności masy.
-  // Cd i area NIE są potrzebne — opory wychodzą z fazy wybiegu.
-  //
-  //   P_wheel = (m × a) × v_avg
-  //
+  // ── Moc na kołach (pojedyncza próbka) z Masami Wirującymi ──────────────────
   static double calculateWheelHp({
     required double v1KmH,
     required double v2KmH,
     required double timeDelta,
     required double weight,
+    double rotationalFactor = 1.05,
   }) {
     if (timeDelta <= 0 || v2KmH <= v1KmH) return 0.0;
-
-    final vAvg  = ((v1KmH + v2KmH) / 2.0) / 3.6;       // m/s
-    final a     = ((v2KmH - v1KmH) / 3.6) / timeDelta;  // m/s²
-    final powerW = weight * a * vAvg;                    // W
-    return powerW / 735.499;                             // KM
+    final vAvg   = ((v1KmH + v2KmH) / 2.0) / 3.6;
+    final a      = ((v2KmH - v1KmH) / 3.6) / timeDelta;
+    final effectiveWeight = weight * rotationalFactor;
+    
+    return (effectiveWeight * a * vAvg) / 735.499;
   }
 
-  // ── Straty wybiegu (faza coasting) ─────────────────────────────────────────
-  //
-  // Pojazd na luzie — WSZYSTKIE opory łącznie:
-  //   opór powietrza + toczenie + straty napędu (łożyska, olej)
-  //
-  //   P_loss = (m × decel) × v_avg
-  //
+  // ── Straty wybiegu (pojedyncza próbka) ──────────────────────────────────────
   static double calculateCoastLossHp({
-    required double v1KmH,      // wyższa (poprzednia)
-    required double v2KmH,      // niższa (aktualna)
+    required double v1KmH,
+    required double v2KmH,
     required double timeDelta,
     required double weight,
   }) {
     if (timeDelta <= 0 || v1KmH <= v2KmH) return 0.0;
-
-    final vAvg   = ((v1KmH + v2KmH) / 2.0) / 3.6;
-    final decel  = ((v1KmH - v2KmH) / 3.6) / timeDelta;
-    final powerW = weight * decel * vAvg;
-    return (powerW / 735.499).clamp(0.0, 500.0);
+    final vAvg  = ((v1KmH + v2KmH) / 2.0) / 3.6;
+    final decel = ((v1KmH - v2KmH) / 3.6) / timeDelta;
+    return ((weight * decel * vAvg) / 735.499).clamp(0.0, 500.0);
   }
 
-  // ── EMA (wygładzanie) ───────────────────────────────────────────────────────
-  // alpha = 0.0 → bez wygładzania, wysoki → bardziej stary sygnał
+  // ── EMA ────────────────────────────────────────────────────────────────────
   static double ema(double newVal, double prevSmoothed, double alpha) {
     if (prevSmoothed == 0.0) return newVal;
     return newVal * (1.0 - alpha) + prevSmoothed * alpha;
   }
 
-  // ── Regresja liniowa strat wybiegu ─────────────────────────────────────────
-  // Zwraca {a, b} gdzie: lossHp(v) = a*v + b
-  static Map<String, double> calculateLossRegression(
-      List<List<double>> lossPoints) {
-    if (lossPoints.length < 3) return {'a': 0.0, 'b': 0.0};
+  // ── Regresja wielomianowa (Dynomet) z Masami Wirującymi ────────────────────
+  static List<List<double>> polynomialPowerCurve({
+    required List<List<double>> timeSpeedPoints,
+    required double weight,
+    double rotationalFactor = 1.05,
+    int degree = 6,
+  }) {
+    if (timeSpeedPoints.length < degree + 2) return [];
 
-    int    n     = lossPoints.length;
-    double sumX  = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+    final n  = timeSpeedPoints.length;
+    final ts = timeSpeedPoints.map((p) => p[0]).toList();
+    final vs = timeSpeedPoints.map((p) => p[1] / 3.6).toList();
 
-    for (final p in lossPoints) {
-      sumX  += p[0];
-      sumY  += p[1];
-      sumXY += p[0] * p[1];
-      sumX2 += p[0] * p[0];
+    final tMin = ts.first;
+    final tMax = ts.last;
+    final tRange = tMax - tMin;
+    if (tRange <= 0) return [];
+    final tsNorm = ts.map((t) => (t - tMin) / tRange).toList();
+
+    final A = List.generate(n, (i) {
+      return List.generate(degree + 1, (j) => pow(tsNorm[i], j).toDouble());
+    });
+
+    final coeffs = _leastSquares(A, vs, degree + 1);
+    if (coeffs == null) return [];
+
+    final result = <List<double>>[];
+    final effectiveWeight = weight * rotationalFactor;
+
+    for (int i = 1; i < n - 1; i++) {
+      final tN = tsNorm[i];
+      final dt = tRange; 
+
+      double vFit = 0;
+      for (int j = 0; j <= degree; j++) {
+        vFit += coeffs[j] * pow(tN, j);
+      }
+
+      double dv = 0;
+      for (int j = 1; j <= degree; j++) {
+        dv += j * coeffs[j] * pow(tN, j - 1);
+      }
+      final a = dv / dt; 
+
+      if (a <= 0.1) continue; 
+
+      final vKmh = vFit * 3.6;
+      final hpW  = (effectiveWeight * a * vFit) / 735.499;
+
+      if (hpW > 0 && vKmh > 15) {
+        result.add([vKmh, hpW]);
+      }
     }
 
-    final denom = n * sumX2 - sumX * sumX;
-    if (denom.abs() < 1e-10) return {'a': 0.0, 'b': (sumY / n).clamp(0.0, 100.0)};
+    return result;
+  }
 
-    final a = (n * sumXY - sumX * sumY) / denom;
-    final b = (sumY - a * sumX) / n;
+  // ── Zaawansowana Regresja Kwadratowa Strat Wybiegu ─────────────────────────
+  static List<double> calculateAdvancedLossRegression(
+      List<List<double>> lossPoints) {
+    if (lossPoints.length < 3) return [0.0, 0.0, 0.0];
 
-    // Sanity: straty rosną z prędkością (a >= 0) lub są stałe
-    if (a < 0) return {'a': 0.0, 'b': b.clamp(0.0, 200.0)};
-    return {'a': a.clamp(0.0, 5.0), 'b': b.clamp(0.0, 200.0)};
+    final losses = lossPoints.map((p) => p[1]).toList()..sort();
+    final median = losses[losses.length ~/ 2];
+    final deviations = losses.map((l) => (l - median).abs()).toList()..sort();
+    final mad = deviations[deviations.length ~/ 2];
+    
+    final filtered = lossPoints
+        .where((p) => (p[1] - median).abs() <= 3.0 * mad + 1.0)
+        .toList();
+
+    if (filtered.length < 3) {
+      return [median.clamp(0.0, 100.0), 0.0, 0.0]; 
+    }
+
+    final int degree = 2;
+    final int n = filtered.length;
+    final vsScaled = filtered.map((p) => p[0] / 100.0).toList();
+    final hpLosses = filtered.map((p) => p[1]).toList();
+
+    final A = List.generate(n, (i) {
+      return List.generate(degree + 1, (j) => pow(vsScaled[i], j).toDouble());
+    });
+
+    final coeffs = _leastSquares(A, hpLosses, degree + 1);
+    
+    if (coeffs == null) return [median.clamp(0.0, 100.0), 0.0, 0.0];
+    return coeffs;
+  }
+
+  // ── Least squares solver (eliminacja Gaussa) ───────────────────────────────
+  static List<double>? _leastSquares(
+      List<List<double>> A, List<double> b, int cols) {
+    final n = A.length;
+
+    final ATA = List.generate(cols, (i) =>
+        List.generate(cols, (j) {
+          double sum = 0;
+          for (int k = 0; k < n; k++) sum += A[k][i] * A[k][j];
+          return sum;
+        }));
+
+    final ATb = List.generate(cols, (i) {
+      double sum = 0;
+      for (int k = 0; k < n; k++) sum += A[k][i] * b[k];
+      return sum;
+    });
+
+    final aug = List.generate(cols, (i) => [...ATA[i], ATb[i]]);
+    for (int col = 0; col < cols; col++) {
+      int maxRow = col;
+      for (int row = col + 1; row < cols; row++) {
+        if (aug[row][col].abs() > aug[maxRow][col].abs()) maxRow = row;
+      }
+      final tmp = aug[col]; aug[col] = aug[maxRow]; aug[maxRow] = tmp;
+      if (aug[col][col].abs() < 1e-12) return null;
+
+      final pivot = aug[col][col];
+      for (int j = col; j <= cols; j++) aug[col][j] /= pivot;
+
+      for (int row = 0; row < cols; row++) {
+        if (row == col) continue;
+        final factor = aug[row][col];
+        for (int j = col; j <= cols; j++) {
+          aug[row][j] -= factor * aug[col][j];
+        }
+      }
+    }
+    return aug.map((row) => row[cols]).toList();
   }
 }
