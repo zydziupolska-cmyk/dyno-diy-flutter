@@ -123,7 +123,9 @@ class _DynoScreenState extends State<DynoScreen> {
 
   void _onFrame(GpsFrame frame) {
     if (_state == MeasurementState.idle ||
-        _state == MeasurementState.finished) return;
+        _state == MeasurementState.finished) {
+      return;
+    }
 
     final rawSpeed = frame.speed;
     final currentGpsTime = frame.gpsTimeMs;
