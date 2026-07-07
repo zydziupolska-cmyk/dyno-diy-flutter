@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../models/car_profile.dart';
@@ -41,20 +40,12 @@ class _DynoScreenState extends State<DynoScreen> {
 
   // Tracking
   double    _lastSpeed        = 0.0;
-  double    _lastChangedSpeed = -1.0; 
-  DateTime? _lastChangedTime;          
-  double    _smoothedSpeed    = 0.0;   
-  double    _lastSmoothedHp   = 0.0;   
-  bool      _warmingUp       = false;  
-  DateTime? _startTime;               
+  bool      _warmingUp      = false;  // delay 1s po starcie
+  DateTime? _startTime;               // czas naciśnięcia START
   DateTime? _lastTime;
-  
-  // Coasting Tracking
-  double    _lastValidCoastSpeed = -1.0;
-  DateTime? _lastValidCoastTime;
 
   // Countdown przed pomiarem
-  int    _countdown      = 0;
+  int    _countdown     = 0;
   Timer? _countdownTimer;
 
   // Coasting timer
@@ -62,11 +53,13 @@ class _DynoScreenState extends State<DynoScreen> {
   DateTime? _coastingStart;
   Timer?    _coastingTimer;
 
+  // Coasting detection
+
   // Data
-  final List<FlSpot>        _spots      = []; 
-  final List<List<double>>  _lossPoints = []; 
-  final List<GpsSample>     _allSamples = []; 
-  final List<List<double>>  _accRaw     = []; 
+  final List<FlSpot>        _spots      = []; // punkty wykresu
+  final List<List<double>>  _lossPoints = []; // [speed_kmh, lossHp]
+  final List<GpsSample>     _allSamples = []; // wszystkie próbki GPS
+  final List<List<double>>  _accRaw     = []; // surowe [czas_s, speed_kmh] do regresji
   double _accStartTime = 0.0;
 
   // Results
@@ -85,9 +78,8 @@ class _DynoScreenState extends State<DynoScreen> {
 
   void _reset() {
     _currentSpeed = _currentHp = _currentNm = _maxHp = _maxNm = 0;
-    _lastSpeed = _lastChangedSpeed = -1.0;
-    _lastValidCoastSpeed = -1.0;
-    _lastChangedTime = _lastTime = _lastValidCoastTime = null;
+    _lastSpeed = 0.0;
+    _lastTime = null;
     _countdown = 0;
     _countdownTimer?.cancel();
     _coastingElapsed = 0;
@@ -108,9 +100,10 @@ class _DynoScreenState extends State<DynoScreen> {
     setState(() {
       _reset();
       _countdown = 3;
-      _state = MeasurementState.idle; 
+      _state = MeasurementState.idle; // czekamy na countdown
     });
 
+    // Countdown 3..2..1..START
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       setState(() => _countdown--);
       if (_countdown <= 0) {
@@ -124,173 +117,126 @@ class _DynoScreenState extends State<DynoScreen> {
     });
   }
 
-  void _onSpeed(double gpsSpeed) {
+  void _onSpeed(double rawSpeed) {
     if (_state == MeasurementState.idle ||
-        _state == MeasurementState.finished) { return; }
+        _state == MeasurementState.finished) return;
 
     final now = DateTime.now();
     final dt  = _lastTime != null
         ? now.difference(_lastTime!).inMilliseconds / 1000.0
-        : 0.1;
-    if (dt < 0.02) { return; }
+        : 0.055;
+    _lastTime = now;
+    if (dt < 0.02) return;
 
+    // ── Warmup 1s ────────────────────────────────────────────────────────────
     if (_warmingUp) {
       final elapsed = now.difference(_startTime!).inMilliseconds;
       if (elapsed < 1000) {
         _allSamples.add(GpsSample(
-          speed: gpsSpeed, dt: dt, rejected: true,
-          reason: 'Warmup ${elapsed}ms', phase: 'ACC',
+          speed: rawSpeed, dt: dt, rejected: true,
+          reason: 'Warmup', phase: 'ACC',
         ));
-        if (_smoothedSpeed == 0.0) {
-          _smoothedSpeed = gpsSpeed;
-        } else {
-          _smoothedSpeed = gpsSpeed * 0.3 + _smoothedSpeed * 0.7;
-        }
-        setState(() { _currentSpeed = gpsSpeed; _lastTime = now; });
+        _lastSpeed = rawSpeed;
+        setState(() => _currentSpeed = rawSpeed);
         return;
       }
-      _warmingUp  = false;
-      _lastSpeed  = _smoothedSpeed; 
+      _warmingUp = false;
     }
 
-    final isSpeedDrop = gpsSpeed < 0.5 && _smoothedSpeed > 5.0;
-    final maxDelta    = 42.0 * dt + 3.0;
-    final isJump      = _smoothedSpeed > 0 &&
-                        (gpsSpeed - _smoothedSpeed).abs() > maxDelta &&
-                        gpsSpeed > 0.5;
+    // ── Walidacja — odrzuć zera i fizycznie niemożliwe skoki ─────────────────
+    final isZero = rawSpeed < 0.5 && _lastSpeed > 5.0;
+    final isJump = (_lastSpeed > 0) &&
+        (rawSpeed - _lastSpeed).abs() > (42.0 * dt + 2.0) &&
+        rawSpeed > 0.5;
 
-    if (isSpeedDrop || isJump) {
+    if (isZero || isJump) {
       _allSamples.add(GpsSample(
-        speed: gpsSpeed, dt: dt, rejected: true,
-        reason: isSpeedDrop ? 'Zero przy jeździe' : 'Skok ${(gpsSpeed-_smoothedSpeed).abs().toStringAsFixed(1)} km/h',
+        speed: rawSpeed, dt: dt, rejected: true,
+        reason: isZero ? 'Zero' : 'Skok ${(rawSpeed - _lastSpeed).abs().toStringAsFixed(1)} km/h',
         phase: _state == MeasurementState.accelerating ? 'ACC' : 'COAST',
       ));
-      setState(() { _currentSpeed = _smoothedSpeed; _lastTime = now; });
+      setState(() => _currentSpeed = _lastSpeed);
       return;
     }
 
-    if (_smoothedSpeed == 0.0) {
-      _smoothedSpeed = gpsSpeed;
-    } else {
-      _smoothedSpeed = gpsSpeed * 0.3 + _smoothedSpeed * 0.7;
-    }
-    final smoothGps = _smoothedSpeed;
-
+    // ── Zapisz próbkę do replay ───────────────────────────────────────────────
     _allSamples.add(GpsSample(
-      speed:    gpsSpeed,
-      dt:       dt,
-      rejected: false,
-      reason:   '',
-      phase:    _state == MeasurementState.accelerating ? 'ACC' : 'COAST',
+      speed: rawSpeed, dt: dt, rejected: false, reason: '',
+      phase: _state == MeasurementState.accelerating ? 'ACC' : 'COAST',
     ));
 
-    final speedChanged = (_lastChangedSpeed < 0) ||
-        (smoothGps - _lastChangedSpeed).abs() > 0.05;
-
-    if (speedChanged) {
-      _lastChangedSpeed = smoothGps;
-      _lastChangedTime  = now;
-    }
-
-    // ── PRZYSPIESZANIE ───────────────────────────────────────────────────────
+    // ── PRZYSPIESZANIE ────────────────────────────────────────────────────────
     if (_state == MeasurementState.accelerating) {
+      // Zapisz surową próbkę do regresji wielomianowej
       if (_accStartTime == 0.0) {
         _accStartTime = now.millisecondsSinceEpoch / 1000.0;
       }
-      final relT = now.millisecondsSinceEpoch / 1000.0 - _accStartTime;
-      
-      _accRaw.add([relT, gpsSpeed]);
+      _accRaw.add([now.millisecondsSinceEpoch / 1000.0 - _accStartTime, rawSpeed]);
 
-      if (_lastSpeed > 0 && gpsSpeed > _lastSpeed && dt > 0.02) {
-        final physicsMaxDelta = 42.0 * dt; 
-        
-        if ((gpsSpeed - _lastSpeed) <= physicsMaxDelta) {
-          final hpRaw = PhysicsEngine.calculateWheelHp(
-            v1KmH:     _lastSpeed,     
-            v2KmH:     gpsSpeed,       
-            timeDelta: dt.clamp(0.02, 0.5),
-            weight:    _weight,
-          );
+      // Oblicz moc TYLKO gdy prędkość wzrosła
+      // dt = czas od poprzedniej próbki (spójny z dv)
+      if (rawSpeed > _lastSpeed + 0.05) {
+        final hpWheel = PhysicsEngine.calculateWheelHp(
+          v1KmH:     _lastSpeed,
+          v2KmH:     rawSpeed,
+          timeDelta: dt.clamp(0.02, 0.5),
+          weight:    _weight,
+        );
 
-          if (_lastSmoothedHp == 0) _lastSmoothedHp = hpRaw;
-          final hpEma = hpRaw * 0.2 + _lastSmoothedHp * 0.8; 
-          _lastSmoothedHp = hpEma;
-
-          final xVal  = _useRpm ? gpsSpeed * widget.kFactor! : gpsSpeed;
+        if (hpWheel > 0 && hpWheel < 500) {
+          final xVal  = _useRpm ? rawSpeed * widget.kFactor! : rawSpeed;
           final lastX = _spots.isNotEmpty ? _spots.last.x : 0.0;
           final step  = _useRpm ? 30.0 : 0.5;
 
           double nmLive = 0;
-          if (_useRpm) {
-            final rpm = gpsSpeed * widget.kFactor!;
-            if (rpm > 0) nmLive = (hpEma * 9550.0) / rpm;
+          if (_useRpm && rawSpeed * widget.kFactor! > 0) {
+            nmLive = (hpWheel * 7023.5) / (rawSpeed * widget.kFactor!);
           }
 
           setState(() {
-            _currentHp = hpEma;
+            _currentHp = hpWheel;
             _currentNm = nmLive;
-            if (hpEma > _maxHp) _maxHp = hpEma;
-            if (nmLive > _maxNm) _maxNm = nmLive;
-
-            if (gpsSpeed > 20 && hpEma > 5 && xVal >= lastX + step) {
-              _spots.add(FlSpot(xVal, hpEma));
+            if (hpWheel > _maxHp) _maxHp = hpWheel;
+            if (nmLive  > _maxNm) _maxNm = nmLive;
+            if (rawSpeed > 20 && xVal >= lastX + step) {
+              _spots.add(FlSpot(xVal, hpWheel));
             }
           });
         }
       }
     }
 
-    // ── WYBIEG ───────────────────────────────────────────────────────────────
+    // ── WYBIEG ────────────────────────────────────────────────────────────────
     else if (_state == MeasurementState.coasting) {
-      if (_lastValidCoastSpeed < 0) {
-        _lastValidCoastSpeed = smoothGps;
-        _lastValidCoastTime = now;
-      } else if (speedChanged) {
-        final dtCoast = now.difference(_lastValidCoastTime!).inMilliseconds / 1000.0;
-        
-        if (dtCoast > 0.05 && _lastValidCoastSpeed > smoothGps) {
-          final lossRaw = PhysicsEngine.calculateCoastLossHp(
-            v1KmH:     _lastValidCoastSpeed, 
-            v2KmH:     smoothGps,
-            timeDelta: dtCoast.clamp(0.05, 10.0),
-            weight:    _weight,
-          );
-          
-          if (lossRaw > 0 && lossRaw < 200) {
-            setState(() {
-              _currentHp = lossRaw;
-              _lossPoints.add([smoothGps, lossRaw]);
-            });
-            _lastValidCoastSpeed = smoothGps;
-            _lastValidCoastTime = now;
-          }
+      if (rawSpeed < _lastSpeed - 0.05) {
+        final lossHp = PhysicsEngine.calculateCoastLossHp(
+          v1KmH:     _lastSpeed,
+          v2KmH:     rawSpeed,
+          timeDelta: dt.clamp(0.02, 0.5),
+          weight:    _weight,
+        );
+        if (lossHp > 0 && lossHp < 200) {
+          _lossPoints.add([rawSpeed, lossHp]);
+          setState(() => _currentHp = lossHp);
         }
       }
     }
 
     setState(() {
-      _currentSpeed = gpsSpeed;    
-      _lastSpeed    = gpsSpeed;    
-      _lastTime     = now;
+      _currentSpeed = rawSpeed;
+      _lastSpeed    = rawSpeed;
     });
   }
+
 
   void _startCoasting() {
     _coastingStart = DateTime.now();
     _coastingTimer?.cancel();
     _coastingTimer = Timer.periodic(const Duration(milliseconds: 100), (t) {
-      if (!mounted || _state != MeasurementState.coasting) {
-        t.cancel();
-        return;
-      }
-      final elapsed = DateTime.now()
-          .difference(_coastingStart!)
-          .inMilliseconds / 1000.0;
+      if (!mounted || _state != MeasurementState.coasting) { t.cancel(); return; }
+      final elapsed = DateTime.now().difference(_coastingStart!).inMilliseconds / 1000.0;
       setState(() => _coastingElapsed = elapsed);
-      if (elapsed >= 15.0) {
-        t.cancel();
-        _stopAndSave();
-      }
+      if (elapsed >= 15.0) { t.cancel(); _stopAndSave(); }
     });
     setState(() {
       _state           = MeasurementState.coasting;
@@ -307,53 +253,62 @@ class _DynoScreenState extends State<DynoScreen> {
     _speedSub?.cancel();
     setState(() => _state = MeasurementState.finished);
 
-    final lossCoeffs = PhysicsEngine.calculateAdvancedLossRegression(_lossPoints);
-    final c0 = lossCoeffs[0]; 
-    final c1 = lossCoeffs[1]; 
-    final c2 = lossCoeffs[2]; 
-    debugPrint('[DYNO] Straty wielomian: C=$c0, B=$c1, A=$c2 n=${_lossPoints.length}');
+    // Regresja strat wybiegu
+    final reg = PhysicsEngine.calculateLossRegression(_lossPoints);
+    final a   = reg['a'] ?? 0.0;
+    final b   = reg['b'] ?? 0.0;
+    debugPrint('[DYNO] Strat: a=$a b=$b n=${_lossPoints.length}');
 
+    // Regresja wielomianowa na surowych próbkach ACC (metoda Dynomet)
     List<FlSpot> sourceSpots;
     debugPrint('[DYNO] _accRaw: ${_accRaw.length} próbek, _spots: ${_spots.length} punktów');
 
     if (_accRaw.length >= 30) {
+      // Regresja wielomianowa na surowych próbkach
       final polyPts = PhysicsEngine.polynomialPowerCurve(
         timeSpeedPoints: _accRaw,
         weight: _weight,
-        rotationalFactor: 1.05,
         degree: 6,
       );
       debugPrint('[DYNO] Regresja poly: ${polyPts.length} punktów');
 
       if (polyPts.length >= 5) {
+        // polyPts zwraca [speed_kmh, hp_wheel]
         sourceSpots = polyPts.map((p) => FlSpot(p[0], p[1])).toList();
+        debugPrint('[DYNO] Używam regresji wielomianowej');
       } else {
         sourceSpots = _spots;
+        debugPrint('[DYNO] Regresja dała za mało punktów, używam EMA');
       }
     } else {
       sourceSpots = _spots;
+      debugPrint('[DYNO] Za mało próbek dla regresji, używam EMA');
     }
 
     final correctedSpots = <FlSpot>[];
     final dataPoints     = <String>[];
     double maxHp = 0, maxNm = 0;
 
+    // Zakres prędkości wybiegu
     final coastSpeeds = _lossPoints.map((p) => p[0]).toList();
     final coastMin = coastSpeeds.isNotEmpty ? coastSpeeds.reduce((a,b) => a<b?a:b) : 0.0;
     final coastMax = coastSpeeds.isNotEmpty ? coastSpeeds.reduce((a,b) => a>b?a:b) : 999.0;
 
     for (final spot in sourceSpots) {
-      final speedKmh = spot.x; 
+      final speedKmh = spot.x; // zawsze km/h
       final hpWheel  = spot.y;
 
+      // Zastosuj straty tylko w zakresie gdzie mamy dane z wybiegu
+      // Poza zakresem użyj średnich strat z wybiegu
       double loss;
       if (coastSpeeds.isEmpty) {
         loss = 0.0;
+      } else if (speedKmh >= coastMin && speedKmh <= coastMax) {
+        loss = (a * speedKmh + b).clamp(0.0, 200.0);
       } else {
+        // Użyj wartości na granicy zakresu (nie ekstrapoluj)
         final clampedSpeed = speedKmh.clamp(coastMin, coastMax);
-        final vScale = clampedSpeed / 100.0;
-        
-        loss = (c0 + (c1 * vScale) + (c2 * pow(vScale, 2))).clamp(0.0, 200.0);
+        loss = (a * clampedSpeed + b).clamp(0.0, 200.0);
       }
 
       final finalHp  = (hpWheel + loss) * widget.weatherCf;
@@ -361,7 +316,7 @@ class _DynoScreenState extends State<DynoScreen> {
       double finalNm = 0;
       if (widget.kFactor != null && widget.kFactor! > 0) {
         final rpm = speedKmh * widget.kFactor!;
-        if (rpm > 0) finalNm = (finalHp * 9550.0) / rpm;
+        if (rpm > 0) finalNm = (finalHp * 7023.5) / rpm;
       }
 
       correctedSpots.add(FlSpot(speedKmh, finalHp));
@@ -394,7 +349,7 @@ class _DynoScreenState extends State<DynoScreen> {
       _maxNm    = maxNm;
       _savedRun = run;
     });
-    
+    // ignore: use_build_context_synchronously
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('Zapisano! ${maxHp.toStringAsFixed(1)} KM'
           '${maxNm > 0 ? " / ${maxNm.toStringAsFixed(1)} Nm" : ""}'),
@@ -434,6 +389,7 @@ class _DynoScreenState extends State<DynoScreen> {
       body: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: Column(children: [
+          // Status
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
@@ -461,12 +417,14 @@ class _DynoScreenState extends State<DynoScreen> {
 
           const SizedBox(height: 10),
 
+          // Prędkość
           Text(_currentSpeed.toStringAsFixed(1),
               style: const TextStyle(fontSize: 50, fontWeight: FontWeight.bold)),
           const Text('km/h', style: TextStyle(color: Colors.grey, fontSize: 13)),
 
           const SizedBox(height: 8),
 
+          // KM + Nm
           Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
             Column(children: [
               Text(
@@ -493,6 +451,7 @@ class _DynoScreenState extends State<DynoScreen> {
               ]),
           ]),
 
+          // Przycisk ręcznego wybiegu
           if (_state == MeasurementState.accelerating)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -511,6 +470,7 @@ class _DynoScreenState extends State<DynoScreen> {
 
           const SizedBox(height: 6),
 
+          // Wykres
           Expanded(
             child: Container(
               padding: const EdgeInsets.only(right: 18, top: 12),
@@ -571,6 +531,7 @@ class _DynoScreenState extends State<DynoScreen> {
 
           const SizedBox(height: 10),
 
+          // Przyciski po zakończeniu
           if (_state == MeasurementState.finished) ...[
             if (_savedRun != null)
               SizedBox(
@@ -624,6 +585,7 @@ class _DynoScreenState extends State<DynoScreen> {
             const SizedBox(height: 6),
           ],
 
+          // Przycisk Start
           GestureDetector(
             onTap: (_state == MeasurementState.accelerating ||
                     _state == MeasurementState.coasting)

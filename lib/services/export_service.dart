@@ -36,7 +36,7 @@ class ExportService {
         final savedNm = parts.length >= 3 ? double.tryParse(parts[2]) : null;
         final nm = (savedNm != null && savedNm > 0)
             ? savedNm
-            : (hp * 9550.0) / rpm;
+            : (hp * 7023.5) / rpm;
         nmPts.add(_Pt(rpm, nm));
       }
     }
@@ -392,7 +392,7 @@ class ExportService {
             final rpm = kFactor != null ? speed * kFactor : null;
             final nm  = (savedNm != null && savedNm > 0)
                 ? savedNm
-                : (rpm != null && rpm > 0) ? (hp * 9550.0) / rpm : null;
+                : (rpm != null && rpm > 0) ? (hp * 7023.5) / rpm : null;
             buf.write('        <Point speedKmh="${parts[0]}" hp="${parts[1]}"');
             if (rpm != null) buf.write(' rpm="${rpm.toStringAsFixed(0)}"');
             if (nm  != null) buf.write(' nm="${nm.toStringAsFixed(1)}"');
