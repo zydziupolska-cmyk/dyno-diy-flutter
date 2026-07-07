@@ -844,15 +844,24 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                     ? const Center(
                         child: Text('Brak danych wykresu',
                             style: TextStyle(color: Colors.grey)))
-                    : LineChart(
+                    : Builder(builder: (context) {
+                        // Normalizuj Nm do skali HP żeby obie krzywe zmieściły się
+                        // Nm oś prawa: 0-maxNm, HP oś lewa: 0-maxHp
+                        // Nm rysujemy przeskalowane do osi HP, a etykiety prawej osi pokazują prawdziwe Nm
+                        final nmScale = maxNm > 0 && maxHp > 0 ? maxHp / maxNm : 1.0;
+                        final nmSpotsScaled = nmSpots
+                            .map((s) => FlSpot(s.x, s.y * nmScale))
+                            .toList();
+                        final maxY = (maxHp * 1.15).ceilToDouble();
+                        return LineChart(
                         LineChartData(
                           minX: 30, maxX: 200, minY: 0,
-                          maxY: maxHp + 50,
+                          maxY: maxY,
                           lineBarsData: [
-                            // Nm (niebieska, pod HP)
-                            if (nmSpots.isNotEmpty)
+                            // Nm (niebieska) - przeskalowana do osi HP
+                            if (nmSpotsScaled.isNotEmpty)
                               LineChartBarData(
-                                spots: nmSpots,
+                                spots: nmSpotsScaled,
                                 isCurved: true,
                                 curveSmoothness: 0.3,
                                 color: Colors.blueAccent,
@@ -862,7 +871,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                                     show: true,
                                     color: Colors.blueAccent.withValues(alpha: 0.04)),
                               ),
-                            // HP (zielona, na wierzchu)
+                            // HP (zielona)
                             LineChartBarData(
                               spots: spots,
                               isCurved: true,
@@ -872,26 +881,40 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                               dotData: const FlDotData(show: false),
                               belowBarData: BarAreaData(
                                   show: true,
-                                  color: Colors.greenAccent
-                                      .withValues(alpha: 0.05)),
+                                  color: Colors.greenAccent.withValues(alpha: 0.05)),
                             ),
                           ],
                           titlesData: FlTitlesData(
-                            rightTitles: const AxisTitles(
-                                sideTitles: SideTitles(showTitles: false)),
                             topTitles: const AxisTitles(
                                 sideTitles: SideTitles(showTitles: false)),
+                            // Prawa oś: Nm
+                            rightTitles: nmSpots.isNotEmpty ? AxisTitles(
+                              axisNameWidget: const Text('Nm',
+                                  style: TextStyle(color: Colors.blueAccent, fontSize: 11)),
+                              sideTitles: SideTitles(
+                                showTitles: true,
+                                reservedSize: 44,
+                                getTitlesWidget: (v, m) {
+                                  // Przelicz z powrotem na Nm
+                                  final nm = nmScale > 0 ? v / nmScale : v;
+                                  if (nm < 0) return const SizedBox.shrink();
+                                  return Text(nm.toInt().toString(),
+                                      style: const TextStyle(
+                                          color: Colors.blueAccent, fontSize: 9));
+                                },
+                              ),
+                            ) : const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                             leftTitles: AxisTitles(
                               axisNameWidget: const Text('KM',
                                   style: TextStyle(
-                                      color: Colors.grey, fontSize: 11)),
+                                      color: Colors.greenAccent, fontSize: 11)),
                               sideTitles: SideTitles(
                                 showTitles: true,
                                 reservedSize: 40,
                                 getTitlesWidget: (v, m) => Text(
                                     v.toInt().toString(),
                                     style: const TextStyle(
-                                        color: Colors.grey, fontSize: 10)),
+                                        color: Colors.greenAccent, fontSize: 10)),
                               ),
                             ),
                             bottomTitles: AxisTitles(
@@ -912,7 +935,8 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                               const FlGridData(show: true, drawVerticalLine: false),
                           borderData: FlBorderData(show: false),
                         ),
-                      ),
+                      );
+                      }), // Builder
               ),
             ),
           ],

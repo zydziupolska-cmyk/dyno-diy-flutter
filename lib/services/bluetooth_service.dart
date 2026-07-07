@@ -2,6 +2,18 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
+/// Jedna atomowa ramka odebrana z ESP32: prędkość + satelity + znacznik
+/// czasu ESP32 (millis() w chwili sparsowania tej epoki GPS).
+/// gpsTimeMs pochodzi z zegara ESP32, NIE z czasu odebrania pakietu BLE —
+/// dzięki temu dt liczone z różnicy gpsTimeMs jest odporne na jitter
+/// transportu Bluetooth (patrz analiza GPS Replay: aliasing 40ms/55ms).
+class GpsFrame {
+  final double speed;
+  final int sats;
+  final int? gpsTimeMs; // null jeśli stary firmware (2 pola zamiast 3)
+  GpsFrame({required this.speed, required this.sats, this.gpsTimeMs});
+}
+
 class AppBleService {
   static const String serviceUuid = "19b10000-e8f2-537e-4f6c-d104768a1214";
   static const String characteristicUuid = "19b10001-e8f2-537e-4f6c-d104768a1214";
@@ -16,13 +28,19 @@ class AppBleService {
   final _satellitesController = StreamController<int>.broadcast();
 
   Stream<double> get speedStream => _speedController.stream;
-  
+
   final _gpsTimeController = StreamController<int>.broadcast();
   Stream<int> get gpsTimeStream => _gpsTimeController.stream;
   int _lastGpsTimeMs = 0;
   int get lastGpsTimeMs => _lastGpsTimeMs;
   Stream<bool> get connectionStream => _connectionController.stream;
   Stream<int> get satellitesStream => _satellitesController.stream;
+
+  // Preferowane źródło dla pomiaru: speed+sats+timestamp jako jedna atomowa
+  // ramka, żeby konsument (dyno_screen) nigdy nie liczył dt z niedopasowanej
+  // pary (speed z ramki N, timestamp z ramki N-1 itp.)
+  final _frameController = StreamController<GpsFrame>.broadcast();
+  Stream<GpsFrame> get frameStream => _frameController.stream;
 
   bool isConnected = false;
   bool _scanning = false;
@@ -128,27 +146,40 @@ class AppBleService {
     }
   }
 
-  // Format ramki z ESP32: "speed;sats\n"  np. "87.4;9\n"
+  // Format ramki z ESP32 (v2): "speed;sats;espMillis\n"  np. "87.4;9;123456\n"
+  // (stary firmware wysyła tylko "speed;sats\n" — nadal wspierane, gpsTimeMs=null)
   void _parseFrame(List<int> rawBytes) {
     try {
       final rawData = utf8.decode(rawBytes).trim();
       print('[BLE] <- $rawData');
       final parts = rawData.split(';');
 
+      double? speed;
+      int? sats;
+      int? gpsT;
+
       if (parts.isNotEmpty) {
-        final speed = double.tryParse(parts[0]);
+        speed = double.tryParse(parts[0]);
         if (speed != null && speed >= 0) _speedController.add(speed);
       }
       if (parts.length >= 2) {
-        final sats = int.tryParse(parts[1]);
+        sats = int.tryParse(parts[1]);
         if (sats != null && sats >= 0) _satellitesController.add(sats);
       }
       if (parts.length >= 3) {
-        final gpsT = int.tryParse(parts[2]);
+        gpsT = int.tryParse(parts[2]);
         if (gpsT != null && gpsT > 0) {
           _lastGpsTimeMs = gpsT;
           _gpsTimeController.add(gpsT);
         }
+      }
+
+      if (speed != null && speed >= 0) {
+        _frameController.add(GpsFrame(
+          speed: speed,
+          sats: sats ?? 0,
+          gpsTimeMs: (gpsT != null && gpsT > 0) ? gpsT : null,
+        ));
       }
     } catch (e) {
       print('[BLE] Blad parsowania: $e');
@@ -172,5 +203,7 @@ class AppBleService {
     _speedController.close();
     _connectionController.close();
     _satellitesController.close();
+    _gpsTimeController.close();
+    _frameController.close();
   }
 }
