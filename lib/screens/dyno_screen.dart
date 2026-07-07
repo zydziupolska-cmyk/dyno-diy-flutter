@@ -31,11 +31,8 @@ class DynoScreen extends StatefulWidget {
 class _DynoScreenState extends State<DynoScreen> {
   MeasurementState _state = MeasurementState.idle;
 
-  // Słuchamy kompletnych ramek z czasem z ESP32
   StreamSubscription<GpsFrame>? _frameSub;
 
-  // Współczynnik masy wirujących elementów napędu (koła, wał, koło
-  // zamachowe) — realnie przyspiesza się nie tylko masa pojazdu.
   static const double _rotationalFactor = 1.05;
 
   double _currentSpeed = 0.0;
@@ -44,30 +41,29 @@ class _DynoScreenState extends State<DynoScreen> {
   double _maxHp        = 0.0;
   double _maxNm        = 0.0;
 
-  double    _lastSpeed         = 0.0;
-  double    _lastSmoothedHp    = 0.0;
+  double _lastSpeed      = 0.0;
+  double _lastSmoothedHp = 0.0;
 
-  // Zmienne do sprzętowych czasów z ESP32
-  int?      _lastGpsTimeMs;
-  int?      _accStartTimeMs;
-  double    _syntheticTimeFallback = 0.0;
+  // Sprzętowe czasy z ESP32
+  int?   _lastGpsTimeMs;
+  int?   _accStartTimeMs;
+  double _syntheticTimeFallback = 0.0;
 
-  int       _warmupFrames      = 0;
+  int _warmupFrames = 0;
 
-  double    _lastValidCoastSpeed = -1.0;
-  int?      _lastValidCoastTimeMs;
-  int       _coastFrameCounter   = 0;
+  // Wybieg: surowe [czas_s, prędkość_kmh] — cały segment, do fitu globalnego
+  final List<List<double>> _coastRaw = [];
+  double _coastCumTime = 0.0;
 
   int    _countdown      = 0;
   Timer? _countdownTimer;
-  double    _coastingElapsed  = 0.0;
+  double    _coastingElapsed = 0.0;
   DateTime? _coastingStart;
   Timer?    _coastingTimer;
 
-  final List<FlSpot>        _spots      = [];
-  final List<List<double>>  _lossPoints = [];
-  final List<GpsSample>     _allSamples = [];
-  final List<List<double>>  _accRaw     = [];
+  final List<FlSpot>       _spots      = [];
+  final List<GpsSample>    _allSamples = [];
+  final List<List<double>> _accRaw     = [];
 
   DynoRun? _savedRun;
 
@@ -86,23 +82,18 @@ class _DynoScreenState extends State<DynoScreen> {
     _currentSpeed = _currentHp = _currentNm = _maxHp = _maxNm = 0;
     _lastSpeed = 0.0;
     _lastSmoothedHp = 0.0;
-
     _lastGpsTimeMs = null;
     _accStartTimeMs = null;
     _syntheticTimeFallback = 0.0;
     _warmupFrames = 0;
-
-    _lastValidCoastSpeed = -1.0;
-    _lastValidCoastTimeMs = null;
-    _coastFrameCounter = 0;
-
+    _coastRaw.clear();
+    _coastCumTime = 0.0;
     _countdown = 0;
     _countdownTimer?.cancel();
     _coastingElapsed = 0;
     _coastingStart = null;
     _coastingTimer?.cancel();
     _spots.clear();
-    _lossPoints.clear();
     _allSamples.clear();
     _accRaw.clear();
     _savedRun = null;
@@ -124,36 +115,30 @@ class _DynoScreenState extends State<DynoScreen> {
       setState(() => _countdown--);
       if (_countdown <= 0) {
         t.cancel();
-        setState(() {
-          _state = MeasurementState.accelerating;
-        });
-        // Używamy strumienia ramek (speed+sats+timestamp razem, atomowo)!
+        setState(() => _state = MeasurementState.accelerating);
         _frameSub = btService.frameStream.listen(_onFrame);
       }
     });
   }
 
   void _onFrame(GpsFrame frame) {
-    if (_state == MeasurementState.idle || _state == MeasurementState.finished) return;
+    if (_state == MeasurementState.idle ||
+        _state == MeasurementState.finished) return;
 
     final rawSpeed = frame.speed;
     final currentGpsTime = frame.gpsTimeMs;
 
-    // ── OBLICZANIE dt Z ZEGARA ESP32 (odporne na jitter transportu BLE) ──
-    double dt = 0.100; // domyślnie 10Hz
+    // ── dt z zegara ESP32 ──
+    double dt = 0.100;
     if (_lastGpsTimeMs != null && currentGpsTime != null) {
       dt = (currentGpsTime - _lastGpsTimeMs!) / 1000.0;
-      // zabezpieczenie przed resetem/przepełnieniem millis() w ESP
       if (dt <= 0 || dt > 1.0) dt = 0.100;
     }
     _lastGpsTimeMs = currentGpsTime;
 
-    // Ignorowanie zdublowanych pakietów bez nowych znaczników czasu
     if (dt < 0.05 && currentGpsTime == null) return;
 
-    // ── Walidacja: dropout do zera ORAZ fizycznie niemożliwy skok w górę ──
-    // (skok w górę nadal możliwy mimo poprawnego dt — to pojedynczy błędny
-    // odczyt GPS, timestamp go nie wyłapie, trzeba osobnej reguły)
+    // ── Walidacja ──
     final isDropout = _lastSpeed > 10.0 && rawSpeed < 1.0;
     final isJump = (_lastSpeed > 0) &&
         (rawSpeed - _lastSpeed).abs() > (42.0 * dt + 2.0) &&
@@ -162,18 +147,19 @@ class _DynoScreenState extends State<DynoScreen> {
     if (isDropout || isJump) {
       _allSamples.add(GpsSample(
         speed: rawSpeed, dt: dt, rejected: true,
-        reason: isDropout
-            ? 'Dropout do zera'
-            : 'Skok ${(rawSpeed - _lastSpeed).abs().toStringAsFixed(1)} km/h',
+        reason: isDropout ? 'Dropout' : 'Skok',
         phase: _state == MeasurementState.accelerating ? 'ACC' : 'COAST',
       ));
       return;
     }
 
-    // Odczekanie pierwszej sekundy na start i synchronizację GPS (10 klatek @10Hz)
+    // ── Warmup ──
     if (_warmupFrames < 10) {
       _warmupFrames++;
-      _allSamples.add(GpsSample(speed: rawSpeed, dt: dt, rejected: true, reason: 'Warmup', phase: 'ACC'));
+      _allSamples.add(GpsSample(
+        speed: rawSpeed, dt: dt, rejected: true,
+        reason: 'Warmup', phase: 'ACC',
+      ));
       _lastSpeed = rawSpeed;
       setState(() => _currentSpeed = rawSpeed);
       return;
@@ -184,14 +170,12 @@ class _DynoScreenState extends State<DynoScreen> {
       phase: _state == MeasurementState.accelerating ? 'ACC' : 'COAST',
     ));
 
-    // ── PRZYSPIESZANIE ────────────────────────────────────────────────────────
+    // ── PRZYSPIESZANIE ──
     if (_state == MeasurementState.accelerating) {
-
       if (_accStartTimeMs == null && currentGpsTime != null) {
         _accStartTimeMs = currentGpsTime;
       }
 
-      // Oś X regresji: dokładnie zmapowana w sprzętowym czasie z ESP32
       double relTime;
       if (_accStartTimeMs != null && currentGpsTime != null) {
         relTime = (currentGpsTime - _accStartTimeMs!) / 1000.0;
@@ -202,15 +186,10 @@ class _DynoScreenState extends State<DynoScreen> {
 
       _accRaw.add([relTime, rawSpeed]);
 
-      // Liczymy moc TYLKO gdy prędkość realnie wzrosła (próg jak w wersji
-      // bazowej) — przy `>=` zero-deltowe klatki wjeżdżałyby do EMA jako
-      // hpRaw=0 i ściągały wyświetlaną moc w dół bez powodu.
       if (_lastSpeed > 15.0 && rawSpeed > _lastSpeed + 0.05) {
         final hpRaw = PhysicsEngine.calculateWheelHp(
-          v1KmH:     _lastSpeed,
-          v2KmH:     rawSpeed,
-          timeDelta: dt,
-          weight:    _weight,
+          v1KmH: _lastSpeed, v2KmH: rawSpeed,
+          timeDelta: dt, weight: _weight,
           rotationalFactor: _rotationalFactor,
         );
 
@@ -232,7 +211,7 @@ class _DynoScreenState extends State<DynoScreen> {
             _currentHp = hpLiveEma;
             _currentNm = nmLive;
             if (hpLiveEma > _maxHp) _maxHp = hpLiveEma;
-            if (nmLive  > _maxNm) _maxNm = nmLive;
+            if (nmLive > _maxNm) _maxNm = nmLive;
             if (xVal >= lastX + step) {
               _spots.add(FlSpot(xVal, hpLiveEma));
             }
@@ -241,40 +220,24 @@ class _DynoScreenState extends State<DynoScreen> {
       }
     }
 
-    // ── WYBIEG (w oparciu o hardware timestamps) ──────────────────────────────
+    // ── WYBIEG: zbieramy SUROWE [czas, prędkość] do globalnego fitu ──
     else if (_state == MeasurementState.coasting) {
-      if (_lastValidCoastSpeed < 0) {
-        _lastValidCoastSpeed = rawSpeed;
-        _lastValidCoastTimeMs = currentGpsTime;
-        _coastFrameCounter = 0;
-      } else {
-        _coastFrameCounter++;
+      _coastCumTime += dt;
+      _coastRaw.add([_coastCumTime, rawSpeed]);
 
-        // Zbieramy opory w stabilnych oknach co 10 klatek (~1 sekunda)
-        if (_coastFrameCounter >= 10) {
-
-          double dtCoast = 1.0;
-          if (_lastValidCoastTimeMs != null && currentGpsTime != null) {
-            dtCoast = (currentGpsTime - _lastValidCoastTimeMs!) / 1000.0;
-          }
-
-          if (rawSpeed < _lastValidCoastSpeed && dtCoast > 0) {
-            final lossHp = PhysicsEngine.calculateCoastLossHp(
-              v1KmH:     _lastValidCoastSpeed,
-              v2KmH:     rawSpeed,
-              timeDelta: dtCoast,
-              weight:    _weight,
-              rotationalFactor: _rotationalFactor,
-            );
-            if (lossHp > 0 && lossHp < 200) {
-              _lossPoints.add([rawSpeed, lossHp]);
-              setState(() => _currentHp = lossHp);
-            }
-          }
-
-          _lastValidCoastSpeed = rawSpeed;
-          _lastValidCoastTimeMs = currentGpsTime;
-          _coastFrameCounter = 0;
+      // Prosty wskaźnik na żywo (średnia strata w oknie)
+      if (_coastRaw.length > 5) {
+        final recent5 = _coastRaw.sublist(_coastRaw.length - 5);
+        final vFirst = recent5.first[1];
+        final vLast  = recent5.last[1];
+        final dtWin  = recent5.last[0] - recent5.first[0];
+        if (vFirst > vLast && dtWin > 0) {
+          final liveHp = PhysicsEngine.calculateCoastLossHp(
+            v1KmH: vFirst, v2KmH: vLast,
+            timeDelta: dtWin, weight: _weight,
+            rotationalFactor: _rotationalFactor,
+          );
+          setState(() => _currentHp = liveHp);
         }
       }
     }
@@ -295,17 +258,12 @@ class _DynoScreenState extends State<DynoScreen> {
     _coastingTimer?.cancel();
     _coastingTimer = Timer.periodic(const Duration(milliseconds: 100), (t) {
       if (!mounted || _state != MeasurementState.coasting) {
-        t.cancel();
-        return;
+        t.cancel(); return;
       }
       final elapsed = DateTime.now()
-          .difference(_coastingStart!)
-          .inMilliseconds / 1000.0;
+          .difference(_coastingStart!).inMilliseconds / 1000.0;
       setState(() => _coastingElapsed = elapsed);
-      if (elapsed >= 15.0) {
-        t.cancel();
-        _stopAndSave();
-      }
+      if (elapsed >= 15.0) { t.cancel(); _stopAndSave(); }
     });
     setState(() {
       _state           = MeasurementState.coasting;
@@ -317,22 +275,21 @@ class _DynoScreenState extends State<DynoScreen> {
     _frameSub?.cancel();
     setState(() => _state = MeasurementState.finished);
 
-    final lossCoeffs = PhysicsEngine.calculateAdvancedLossRegression(_lossPoints);
-    final c0 = lossCoeffs[0];
-    final c1 = lossCoeffs[1];
-    final c2 = lossCoeffs[2];
+    // ── Model fizyczny strat z CAŁEGO wybiegu ──
+    final coastModel = PhysicsEngine.fitCoastPhysicsModel(_coastRaw);
+    debugPrint('[DYNO] Coast model: CrrG=${coastModel[0].toStringAsFixed(5)}'
+        ' Kaero=${coastModel[1].toStringAsFixed(7)}'
+        ' (${_coastRaw.length} próbek)');
 
+    // ── Regresja wielomianowa mocy ──
     List<FlSpot> sourceSpots;
-
     if (_accRaw.length >= 20) {
-      // Zegar sprzętowy pozwala na gładki wielomian 4. stopnia bez aliasingu
       final polyPts = PhysicsEngine.polynomialPowerCurve(
         timeSpeedPoints: _accRaw,
         weight: _weight,
         rotationalFactor: _rotationalFactor,
         degree: 4,
       );
-
       if (polyPts.length >= 5) {
         sourceSpots = polyPts.map((p) => FlSpot(p[0], p[1])).toList();
       } else {
@@ -342,28 +299,22 @@ class _DynoScreenState extends State<DynoScreen> {
       sourceSpots = _spots;
     }
 
+    // ── Korekta strat + wynik końcowy ──
     final correctedSpots = <FlSpot>[];
     final dataPoints     = <String>[];
     double maxHp = 0, maxNm = 0;
-
-    final coastSpeeds = _lossPoints.map((p) => p[0]).toList();
-    final coastMin = coastSpeeds.isNotEmpty ? coastSpeeds.reduce((a,b) => a<b?a:b) : 0.0;
-    final coastMax = coastSpeeds.isNotEmpty ? coastSpeeds.reduce((a,b) => a>b?a:b) : 999.0;
 
     for (final spot in sourceSpots) {
       final speedKmh = spot.x;
       final hpWheel  = spot.y;
 
-      double loss;
-      if (coastSpeeds.isEmpty) {
-        loss = 0.0;
-      } else {
-        final clampedSpeed = speedKmh.clamp(coastMin, coastMax);
-        final vScale = clampedSpeed / 100.0;
-        loss = (c0 + (c1 * vScale) + (c2 * vScale * vScale)).clamp(0.0, 200.0);
-      }
+      // Model fizyczny: loss(v) bez clampu — działa przy KAŻDEJ prędkości
+      final loss = _coastRaw.isEmpty ? 0.0
+          : PhysicsEngine.coastLossAtSpeed(
+              speedKmh, coastModel, _weight,
+              rotationalFactor: _rotationalFactor);
 
-      final finalHp  = (hpWheel + loss) * widget.weatherCf;
+      final finalHp = (hpWheel + loss) * widget.weatherCf;
 
       double finalNm = 0;
       if (widget.kFactor != null && widget.kFactor! > 0) {
@@ -375,8 +326,7 @@ class _DynoScreenState extends State<DynoScreen> {
       dataPoints.add(
         '${speedKmh.toStringAsFixed(1)};'
         '${finalHp.toStringAsFixed(1)};'
-        '${finalNm.toStringAsFixed(1)}'
-      );
+        '${finalNm.toStringAsFixed(1)}');
       if (finalHp > maxHp) maxHp = finalHp;
       if (finalNm > maxNm) maxNm = finalNm;
     }
@@ -394,9 +344,7 @@ class _DynoScreenState extends State<DynoScreen> {
     if (!mounted) return;
 
     setState(() {
-      _spots
-        ..clear()
-        ..addAll(correctedSpots);
+      _spots..clear()..addAll(correctedSpots);
       _maxHp    = maxHp;
       _maxNm    = maxNm;
       _savedRun = run;
@@ -411,8 +359,10 @@ class _DynoScreenState extends State<DynoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    String statusText  = btService.isConnected ? 'GOTOWY DO STARTU' : 'CZEKAM NA ESP32...';
-    Color  statusColor = btService.isConnected ? Colors.grey : Colors.orangeAccent;
+    String statusText = btService.isConnected
+        ? 'GOTOWY DO STARTU' : 'CZEKAM NA ESP32...';
+    Color statusColor = btService.isConnected
+        ? Colors.grey : Colors.orangeAccent;
 
     if (_countdown > 0) {
       statusText  = 'START ZA $_countdown...';
@@ -435,8 +385,7 @@ class _DynoScreenState extends State<DynoScreen> {
       appBar: AppBar(
         title: const Text('Pomiar Dyno',
             style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        backgroundColor: Colors.transparent, elevation: 0,
       ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -459,21 +408,17 @@ class _DynoScreenState extends State<DynoScreen> {
                   child: LinearProgressIndicator(
                     value: _coastingElapsed / 15.0,
                     backgroundColor: Colors.grey[800],
-                    color: Colors.orangeAccent,
-                    minHeight: 6,
+                    color: Colors.orangeAccent, minHeight: 6,
                   ),
                 ),
             ]),
           ),
-
           const SizedBox(height: 10),
-
           Text(_currentSpeed.toStringAsFixed(1),
               style: const TextStyle(fontSize: 50, fontWeight: FontWeight.bold)),
-          const Text('km/h', style: TextStyle(color: Colors.grey, fontSize: 13)),
-
+          const Text('km/h',
+              style: TextStyle(color: Colors.grey, fontSize: 13)),
           const SizedBox(height: 8),
-
           Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
             Column(children: [
               Text(
@@ -499,7 +444,6 @@ class _DynoScreenState extends State<DynoScreen> {
                     style: const TextStyle(color: Colors.grey, fontSize: 12)),
               ]),
           ]),
-
           if (_state == MeasurementState.accelerating)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -515,9 +459,7 @@ class _DynoScreenState extends State<DynoScreen> {
                         horizontal: 12, vertical: 6)),
               ),
             ),
-
           const SizedBox(height: 6),
-
           Expanded(
             child: Container(
               padding: const EdgeInsets.only(right: 18, top: 12),
@@ -529,15 +471,11 @@ class _DynoScreenState extends State<DynoScreen> {
                 maxY: _maxHp > 100 ? _maxHp + 30 : 200,
                 lineBarsData: [
                   LineChartBarData(
-                    spots: _spots,
-                    isCurved: true,
-                    curveSmoothness: 0.35,
-                    color: Colors.greenAccent,
-                    barWidth: 3,
-                    isStrokeCapRound: true,
+                    spots: _spots, isCurved: true,
+                    curveSmoothness: 0.35, color: Colors.greenAccent,
+                    barWidth: 3, isStrokeCapRound: true,
                     dotData: const FlDotData(show: false),
-                    belowBarData: BarAreaData(
-                        show: true,
+                    belowBarData: BarAreaData(show: true,
                         color: Colors.greenAccent.withValues(alpha: 0.06)),
                   ),
                 ],
@@ -549,20 +487,17 @@ class _DynoScreenState extends State<DynoScreen> {
                   leftTitles: AxisTitles(
                     axisNameWidget: const Text('KM',
                         style: TextStyle(color: Colors.grey, fontSize: 10)),
-                    sideTitles: SideTitles(
-                      showTitles: true, reservedSize: 36,
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 36,
                       getTitlesWidget: (v, _) => Text(v.toInt().toString(),
                           style: const TextStyle(
                               color: Colors.grey, fontSize: 9)),
                     ),
                   ),
                   bottomTitles: AxisTitles(
-                    axisNameWidget: Text(
-                        _useRpm ? 'RPM' : 'km/h',
+                    axisNameWidget: Text(_useRpm ? 'RPM' : 'km/h',
                         style: const TextStyle(
                             color: Colors.grey, fontSize: 10)),
-                    sideTitles: SideTitles(
-                      showTitles: true, reservedSize: 24,
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 24,
                       getTitlesWidget: (v, _) => Text(v.toInt().toString(),
                           style: const TextStyle(
                               color: Colors.grey, fontSize: 9)),
@@ -575,9 +510,7 @@ class _DynoScreenState extends State<DynoScreen> {
               )),
             ),
           ),
-
           const SizedBox(height: 10),
-
           if (_state == MeasurementState.finished) ...[
             if (_savedRun != null)
               SizedBox(
@@ -594,8 +527,7 @@ class _DynoScreenState extends State<DynoScreen> {
                           fontWeight: FontWeight.bold, fontSize: 15)),
                   onPressed: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => RunDetailScreen(
-                      run: _savedRun!,
-                      car: widget.car,
+                      run: _savedRun!, car: widget.car,
                       onExportPdf: () {},
                       onExportPrintPdf: () {},
                       onExportXml: () {
@@ -621,8 +553,7 @@ class _DynoScreenState extends State<DynoScreen> {
                   label: Text(
                     'REPLAY GPS  (${_allSamples.length} próbek)',
                     style: const TextStyle(
-                        color: Colors.orangeAccent, fontSize: 13),
-                  ),
+                        color: Colors.orangeAccent, fontSize: 13)),
                   onPressed: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => GpsReplayScreen(
                         samples: List.from(_allSamples)))),
@@ -630,12 +561,10 @@ class _DynoScreenState extends State<DynoScreen> {
               ),
             const SizedBox(height: 6),
           ],
-
           GestureDetector(
             onTap: (_state == MeasurementState.accelerating ||
                     _state == MeasurementState.coasting)
-                ? null
-                : _startMeasurement,
+                ? null : _startMeasurement,
             child: Container(
               width: 80, height: 80,
               decoration: BoxDecoration(
@@ -647,20 +576,17 @@ class _DynoScreenState extends State<DynoScreen> {
                 border: Border.all(
                   color: (_state == MeasurementState.idle ||
                           _state == MeasurementState.finished)
-                      ? Colors.greenAccent
-                      : Colors.redAccent,
+                      ? Colors.greenAccent : Colors.redAccent,
                   width: 3,
                 ),
               ),
               child: Icon(
                 (_state == MeasurementState.idle ||
                         _state == MeasurementState.finished)
-                    ? Icons.play_arrow
-                    : Icons.fiber_manual_record,
+                    ? Icons.play_arrow : Icons.fiber_manual_record,
                 color: (_state == MeasurementState.idle ||
                         _state == MeasurementState.finished)
-                    ? Colors.greenAccent
-                    : Colors.redAccent,
+                    ? Colors.greenAccent : Colors.redAccent,
                 size: 40,
               ),
             ),
