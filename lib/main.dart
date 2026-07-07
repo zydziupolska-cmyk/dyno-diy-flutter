@@ -8,6 +8,7 @@ import 'screens/add_car_screen.dart';
 import 'screens/workshop_settings_screen.dart';
 import 'screens/gps_diagnostics_screen.dart';
 import 'screens/gps_replay_screen.dart';
+import 'screens/ota_update_screen.dart';
 import 'services/database_service.dart';
 import 'models/car_profile.dart';
 import 'services/bluetooth_service.dart';
@@ -85,6 +86,15 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         title: const Text('Dyno DIY - Start', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.system_update_alt),
+            tooltip: 'Aktualizacja firmware ESP32',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const OtaUpdateScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.business_outlined),
             tooltip: 'Ustawienia warsztatu',
