@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../models/car_profile.dart';
+import '../models/workshop_settings.dart';
 import '../utils/physics_engine.dart';
 import '../services/bluetooth_service.dart';
 import '../main.dart';
@@ -196,7 +197,9 @@ class _DynoScreenState extends State<DynoScreen> {
         );
 
         if (_lastSmoothedHp == 0) _lastSmoothedHp = hpRaw;
-        final hpLiveEma = hpRaw * 0.15 + _lastSmoothedHp * 0.85;
+        // EMA 0.08/0.92 zamiast 0.15/0.85 — wyłącznie do podglądu na żywo,
+        // nie wpływa na obliczenia regresji końcowej (ta korzysta z _accRaw).
+        final hpLiveEma = hpRaw * 0.08 + _lastSmoothedHp * 0.92;
         _lastSmoothedHp = hpLiveEma;
 
         if (hpLiveEma > 0 && hpLiveEma < 1000) {
@@ -530,8 +533,27 @@ class _DynoScreenState extends State<DynoScreen> {
                   onPressed: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => RunDetailScreen(
                       run: _savedRun!, car: widget.car,
-                      onExportPdf: () {},
-                      onExportPrintPdf: () {},
+                      onExportPdf: () async {
+                        // PDF mobilny — eksport bez kalibracji (brak RPM)
+                        final svc = ExportService();
+                        await svc.exportMobilePdf(
+                          run: _savedRun!,
+                          car: widget.car,
+                        );
+                      },
+                      onExportPrintPdf: () async {
+                        if (widget.kFactor == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text(
+                              'Brak kalibracji – wydruk A4 niedostępny')));
+                          return;
+                        }
+                        final svc     = ExportService();
+                        final ws      = await dbService.getWorkshopSettings();
+                        await svc.exportPrintPdf(
+                          run: _savedRun!, car: widget.car,
+                          workshop: ws, kFactor: widget.kFactor!);
+                      },
                       onExportXml: () {
                         ExportService().exportXml(
                             runs: [_savedRun!], car: widget.car);

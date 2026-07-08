@@ -125,8 +125,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   // ── EKSPORT PDF ───────────────────────────────────────────────────────────
   Future<void> _exportPdf(DynoRun run) async {
-    final car = _selectedCar!;
-    final spots = _parseSpots(run);
+    final car      = _selectedCar!;
+    final spots    = _parseSpots(run);
+    final workshop = await dbService.getWorkshopSettings();
+
+    // Zamień polskie znaki na ASCII (pdf/courier nie obsługuje UTF-8)
+    String ascii(String s) => s
+        .replaceAll('ą','a').replaceAll('ć','c').replaceAll('ę','e')
+        .replaceAll('ł','l').replaceAll('ń','n').replaceAll('ó','o')
+        .replaceAll('ś','s').replaceAll('ź','z').replaceAll('ż','z')
+        .replaceAll('Ą','A').replaceAll('Ć','C').replaceAll('Ę','E')
+        .replaceAll('Ł','L').replaceAll('Ń','N').replaceAll('Ó','O')
+        .replaceAll('Ś','S').replaceAll('Ź','Z').replaceAll('Ż','Z');
+
+    final font = pw.Font.courier();
+
+    pw.MemoryImage? logoImg;
+    if (workshop.logoPath != null) {
+      final f = File(workshop.logoPath!);
+      if (await f.exists()) logoImg = pw.MemoryImage(await f.readAsBytes());
+    }
 
     final pdf = pw.Document();
 
@@ -150,75 +168,144 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   children: [
                     pw.Text('DYNO DIY - Raport pomiaru',
                         style: pw.TextStyle(
-                            color: PdfColors.white,
-                            fontSize: 20,
-                            fontWeight: pw.FontWeight.bold)),
+                            font: font, color: PdfColors.white,
+                            fontSize: 20, fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 4),
                     pw.Text('Data: ${_formatDate(run.timestamp)}',
-                        style: const pw.TextStyle(color: PdfColors.grey200, fontSize: 12)),
+                        style: pw.TextStyle(font: font,
+                            color: PdfColors.grey200, fontSize: 12)),
                   ],
                 ),
               ),
-              pw.SizedBox(height: 20),
+              pw.SizedBox(height: 16),
 
               // Dane pojazdu
               pw.Text('Pojazd',
-                  style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                  style: pw.TextStyle(font: font, fontSize: 14,
+                      fontWeight: pw.FontWeight.bold)),
               pw.Divider(),
-              _pdfRow('Nazwa', car.name),
-              if (car.licensePlate != null) _pdfRow('Rejestracja', car.licensePlate!),
-              _pdfRow('Waga sesji', '${run.sessionWeightKg.toStringAsFixed(0)} kg'),
-              _pdfRow('Naped', car.transmission.name.toUpperCase()),
+              _pdfRow(ascii('Nazwa'), ascii(car.name), font: font),
+              if (car.licensePlate != null)
+                _pdfRow('Rejestracja', ascii(car.licensePlate!), font: font),
+              _pdfRow('Waga sesji',
+                  '${run.sessionWeightKg.toStringAsFixed(0)} kg', font: font),
+              _pdfRow('Naped', ascii(car.transmission.name.toUpperCase()),
+                  font: font),
               pw.SizedBox(height: 16),
 
               // Wyniki
               pw.Text('Wyniki pomiaru',
-                  style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                  style: pw.TextStyle(font: font, fontSize: 14,
+                      fontWeight: pw.FontWeight.bold)),
               pw.Divider(),
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
                 children: [
-                  _pdfResultBox('Moc max', '${run.maxEngineHp.toStringAsFixed(1)} KM'),
-                  _pdfResultBox('Moment max', '${run.maxEngineTorque.toStringAsFixed(1)} Nm'),
-                  _pdfResultBox('Korekcja DIN', '×${run.correctionFactor.toStringAsFixed(4)}'),
+                  _pdfResultBox('Moc max',
+                      '${run.maxEngineHp.toStringAsFixed(1)} KM', font: font),
+                  _pdfResultBox('Moment max',
+                      '${run.maxEngineTorque.toStringAsFixed(1)} Nm', font: font),
+                  _pdfResultBox('Korekcja DIN',
+                      'x${run.correctionFactor.toStringAsFixed(4)}', font: font),
                 ],
               ),
               pw.SizedBox(height: 16),
 
               // Tabela punktów
               pw.Text('Dane krzywej mocy',
-                  style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                  style: pw.TextStyle(font: font, fontSize: 14,
+                      fontWeight: pw.FontWeight.bold)),
               pw.Divider(),
-              pw.Table(
-                border: pw.TableBorder.all(color: PdfColors.grey300),
-                children: [
-                  pw.TableRow(
-                    decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                    children: [
-                      _pdfCell('km/h', bold: true),
-                      _pdfCell('Moc (KM)', bold: true),
-                    ],
-                  ),
-                  ...spots.map((s) => pw.TableRow(children: [
-                    _pdfCell(s.x.toStringAsFixed(1)),
-                    _pdfCell(s.y.toStringAsFixed(1)),
-                  ])),
-                ],
-              ),
+              if (spots.isEmpty)
+                pw.Text('Brak danych', style: pw.TextStyle(font: font,
+                    color: PdfColors.grey, fontSize: 10))
+              else
+                pw.Table(
+                  border: pw.TableBorder.all(color: PdfColors.grey300),
+                  columnWidths: {
+                    0: const pw.FlexColumnWidth(1),
+                    1: const pw.FlexColumnWidth(1),
+                    2: const pw.FlexColumnWidth(1),
+                  },
+                  children: [
+                    pw.TableRow(
+                      decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                      children: [
+                        _pdfCell('km/h', bold: true, font: font),
+                        _pdfCell('Moc (KM)', bold: true, font: font),
+                        _pdfCell('Moment (Nm)', bold: true, font: font),
+                      ],
+                    ),
+                    // Co 3. punkt żeby tabela nie była gigantyczna
+                    ...List.generate(
+                      ((spots.length + 2) ~/ 3),
+                      (i) {
+                        final s = spots[i * 3];
+                        // Pobierz Nm z danych
+                        String nm = '-';
+                        if (i * 3 < run.graphDataPoints.length) {
+                          final parts = run.graphDataPoints[i * 3].split(';');
+                          if (parts.length >= 3) nm = double.tryParse(parts[2])?.toStringAsFixed(1) ?? '-';
+                        }
+                        return pw.TableRow(children: [
+                          _pdfCell(s.x.toStringAsFixed(1), font: font),
+                          _pdfCell(s.y.toStringAsFixed(1), font: font),
+                          _pdfCell(nm, font: font),
+                        ]);
+                      },
+                    ),
+                  ],
+                ),
 
               pw.Spacer(),
               pw.Divider(),
-              pw.Text('Wygenerowano przez Dyno DIY App ${DateTime.now().year}',
-                  style: const pw.TextStyle(color: PdfColors.grey, fontSize: 10)),
+              // Stopka warsztatu
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Row(children: [
+                    if (logoImg != null) ...[
+                      pw.Image(logoImg, height: 20, width: 20,
+                          fit: pw.BoxFit.contain),
+                      pw.SizedBox(width: 6),
+                    ],
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        if (workshop.name.isNotEmpty)
+                          pw.Text(ascii(workshop.name),
+                              style: pw.TextStyle(font: font, fontSize: 9,
+                                  fontWeight: pw.FontWeight.bold)),
+                        pw.Text(
+                          [
+                            if (workshop.phone.isNotEmpty)
+                              'tel. ${workshop.phone}',
+                            if (workshop.website.isNotEmpty)
+                              workshop.website,
+                          ].join('  .  '),
+                          style: pw.TextStyle(font: font, fontSize: 8,
+                              color: PdfColors.grey600),
+                        ),
+                      ],
+                    ),
+                  ]),
+                  pw.Text(
+                    'Dyno DIY App ${DateTime.now().year}',
+                    style: pw.TextStyle(font: font, fontSize: 8,
+                        color: PdfColors.grey),
+                  ),
+                ],
+              ),
             ],
           );
         },
       ),
     );
 
-    final dir = await getTemporaryDirectory();
+    final dir     = await getTemporaryDirectory();
     final carName = car.name.replaceAll(' ', '_');
-    final file = File('${dir.path}/dyno_${carName}_${run.timestamp.millisecondsSinceEpoch}.pdf');
+    final file    = File(
+        '${dir.path}/dyno_${carName}_${run.timestamp.millisecondsSinceEpoch}.pdf');
     await file.writeAsBytes(await pdf.save());
 
     await Share.shareXFiles(
@@ -228,18 +315,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
 
-  pw.Widget _pdfRow(String label, String value) => pw.Padding(
+  pw.Widget _pdfRow(String label, String value, {pw.Font? font}) => pw.Padding(
         padding: const pw.EdgeInsets.symmetric(vertical: 3),
         child: pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text(label, style: const pw.TextStyle(color: PdfColors.grey700)),
-            pw.Text(value, style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+            pw.Text(label, style: pw.TextStyle(font: font, color: PdfColors.grey700)),
+            pw.Text(value, style: pw.TextStyle(font: font, fontWeight: pw.FontWeight.bold)),
           ],
         ),
       );
 
-  pw.Widget _pdfResultBox(String label, String value) => pw.Container(
+  pw.Widget _pdfResultBox(String label, String value, {pw.Font? font}) => pw.Container(
         padding: const pw.EdgeInsets.all(12),
         decoration: pw.BoxDecoration(
           border: pw.Border.all(color: PdfColors.red900),
@@ -249,19 +336,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
           children: [
             pw.Text(value,
                 style: pw.TextStyle(
-                    fontSize: 18,
+                    font: font, fontSize: 18,
                     fontWeight: pw.FontWeight.bold,
                     color: PdfColors.red900)),
             pw.SizedBox(height: 4),
-            pw.Text(label, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
+            pw.Text(label, style: pw.TextStyle(font: font,
+                fontSize: 10, color: PdfColors.grey)),
           ],
         ),
       );
 
-  pw.Widget _pdfCell(String text, {bool bold = false}) => pw.Padding(
+  pw.Widget _pdfCell(String text, {bool bold = false, pw.Font? font}) => pw.Padding(
         padding: const pw.EdgeInsets.all(6),
         child: pw.Text(text,
             style: pw.TextStyle(
+                font: font,
                 fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
                 fontSize: 10)),
       );
@@ -844,24 +933,18 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                     ? const Center(
                         child: Text('Brak danych wykresu',
                             style: TextStyle(color: Colors.grey)))
-                    : Builder(builder: (context) {
-                        // Normalizuj Nm do skali HP żeby obie krzywe zmieściły się
-                        // Nm oś prawa: 0-maxNm, HP oś lewa: 0-maxHp
-                        // Nm rysujemy przeskalowane do osi HP, a etykiety prawej osi pokazują prawdziwe Nm
-                        final nmScale = maxNm > 0 && maxHp > 0 ? maxHp / maxNm : 1.0;
-                        final nmSpotsScaled = nmSpots
-                            .map((s) => FlSpot(s.x, s.y * nmScale))
-                            .toList();
-                        final maxY = (maxHp * 1.15).ceilToDouble();
-                        return LineChart(
+                    : LineChart(
                         LineChartData(
-                          minX: 30, maxX: 200, minY: 0,
-                          maxY: maxY,
+                          minX: 0,
+                          maxX: spots.isEmpty ? 200
+                              : (spots.map((s) => s.x).reduce((a,b) => a>b?a:b) + 10),
+                          minY: 0,
+                          maxY: maxHp + 50,
                           lineBarsData: [
-                            // Nm (niebieska) - przeskalowana do osi HP
-                            if (nmSpotsScaled.isNotEmpty)
+                            // Nm (niebieska, pod HP)
+                            if (nmSpots.isNotEmpty)
                               LineChartBarData(
-                                spots: nmSpotsScaled,
+                                spots: nmSpots,
                                 isCurved: true,
                                 curveSmoothness: 0.3,
                                 color: Colors.blueAccent,
@@ -871,7 +954,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                                     show: true,
                                     color: Colors.blueAccent.withValues(alpha: 0.04)),
                               ),
-                            // HP (zielona)
+                            // HP (zielona, na wierzchu)
                             LineChartBarData(
                               spots: spots,
                               isCurved: true,
@@ -881,40 +964,26 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                               dotData: const FlDotData(show: false),
                               belowBarData: BarAreaData(
                                   show: true,
-                                  color: Colors.greenAccent.withValues(alpha: 0.05)),
+                                  color: Colors.greenAccent
+                                      .withValues(alpha: 0.05)),
                             ),
                           ],
                           titlesData: FlTitlesData(
+                            rightTitles: const AxisTitles(
+                                sideTitles: SideTitles(showTitles: false)),
                             topTitles: const AxisTitles(
                                 sideTitles: SideTitles(showTitles: false)),
-                            // Prawa oś: Nm
-                            rightTitles: nmSpots.isNotEmpty ? AxisTitles(
-                              axisNameWidget: const Text('Nm',
-                                  style: TextStyle(color: Colors.blueAccent, fontSize: 11)),
-                              sideTitles: SideTitles(
-                                showTitles: true,
-                                reservedSize: 44,
-                                getTitlesWidget: (v, m) {
-                                  // Przelicz z powrotem na Nm
-                                  final nm = nmScale > 0 ? v / nmScale : v;
-                                  if (nm < 0) return const SizedBox.shrink();
-                                  return Text(nm.toInt().toString(),
-                                      style: const TextStyle(
-                                          color: Colors.blueAccent, fontSize: 9));
-                                },
-                              ),
-                            ) : const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                             leftTitles: AxisTitles(
                               axisNameWidget: const Text('KM',
                                   style: TextStyle(
-                                      color: Colors.greenAccent, fontSize: 11)),
+                                      color: Colors.grey, fontSize: 11)),
                               sideTitles: SideTitles(
                                 showTitles: true,
                                 reservedSize: 40,
                                 getTitlesWidget: (v, m) => Text(
                                     v.toInt().toString(),
                                     style: const TextStyle(
-                                        color: Colors.greenAccent, fontSize: 10)),
+                                        color: Colors.grey, fontSize: 10)),
                               ),
                             ),
                             bottomTitles: AxisTitles(
@@ -935,8 +1004,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                               const FlGridData(show: true, drawVerticalLine: false),
                           borderData: FlBorderData(show: false),
                         ),
-                      );
-                      }), // Builder
+                      ),
               ),
             ),
           ],

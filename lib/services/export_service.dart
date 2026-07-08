@@ -10,6 +10,165 @@ import '../models/workshop_settings.dart';
 class ExportService {
 
   // ══════════════════════════════════════════════════════════════
+  //  PDF MOBILNY – wrapper dla wywołania z dyno_screen
+  //  (bez WorkshopSettings - pobiera z dbService wewnętrznie)
+  // ══════════════════════════════════════════════════════════════
+  // Uwaga: ta metoda jest wywoływana z dyno_screen.dart gdzie nie ma
+  // dostępu do WorkshopSettings — tutaj używamy domyślnych wartości.
+  // Pełna wersja z warsztatem jest wywoływana z history_screen.dart.
+  Future<void> exportMobilePdf({
+    required DynoRun run,
+    required CarProfile car,
+  }) async {
+    // Deleguj do history_screen przez Share — tu nie mamy kontekstu warsztatu,
+    // więc tworzymy pusty obiekt i generujemy PDF bezpośrednio.
+    final font = pw.Font.courier();
+
+    String ascii(String s) => s
+        .replaceAll('ą','a').replaceAll('ć','c').replaceAll('ę','e')
+        .replaceAll('ł','l').replaceAll('ń','n').replaceAll('ó','o')
+        .replaceAll('ś','s').replaceAll('ź','z').replaceAll('ż','z')
+        .replaceAll('Ą','A').replaceAll('Ć','C').replaceAll('Ę','E')
+        .replaceAll('Ł','L').replaceAll('Ń','N').replaceAll('Ó','O')
+        .replaceAll('Ś','S').replaceAll('Ź','Z').replaceAll('Ż','Z')
+        .replaceAll('°','deg').replaceAll('—','-').replaceAll('×','x')
+        .replaceAll(RegExp(r'[^\x00-\x7F]'), '?');
+
+    final spots = <_Pt>[];
+    for (final p in run.graphDataPoints) {
+      final parts = p.split(';');
+      if (parts.length < 2) continue;
+      final x = double.tryParse(parts[0]);
+      final y = double.tryParse(parts[1]);
+      if (x != null && y != null) spots.add(_Pt(x, y));
+    }
+    spots.sort((a, b) => a.x.compareTo(b.x));
+
+    pw.Widget row(String l, String v) => pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 3),
+      child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(l, style: pw.TextStyle(font: font, color: PdfColors.grey700)),
+          pw.Text(v, style: pw.TextStyle(font: font, fontWeight: pw.FontWeight.bold)),
+        ]));
+
+    pw.Widget cell(String t, {bool bold = false}) => pw.Padding(
+      padding: const pw.EdgeInsets.all(5),
+      child: pw.Text(t, style: pw.TextStyle(font: font, fontSize: 9,
+          fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)));
+
+    final pdf = pw.Document();
+    pdf.addPage(pw.Page(
+      pageFormat: PdfPageFormat.a4,
+      build: (ctx) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Container(
+            width: double.infinity,
+            padding: const pw.EdgeInsets.all(14),
+            decoration: pw.BoxDecoration(color: PdfColors.red900,
+                borderRadius: pw.BorderRadius.circular(8)),
+            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text('DYNO DIY - Raport pomiaru',
+                    style: pw.TextStyle(font: font, color: PdfColors.white,
+                        fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                pw.SizedBox(height: 4),
+                pw.Text('Data: ${_fmtDate(run.timestamp)}',
+                    style: pw.TextStyle(font: font,
+                        color: PdfColors.grey200, fontSize: 11)),
+              ]),
+          ),
+          pw.SizedBox(height: 14),
+          pw.Text('Pojazd', style: pw.TextStyle(font: font, fontSize: 13,
+              fontWeight: pw.FontWeight.bold)),
+          pw.Divider(),
+          row('Nazwa', ascii(car.name)),
+          if (car.licensePlate != null)
+            row('Rejestracja', ascii(car.licensePlate!)),
+          row('Waga sesji', '${run.sessionWeightKg.toStringAsFixed(0)} kg'),
+          pw.SizedBox(height: 14),
+          pw.Text('Wyniki pomiaru', style: pw.TextStyle(font: font, fontSize: 13,
+              fontWeight: pw.FontWeight.bold)),
+          pw.Divider(),
+          pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
+            children: [
+              _resultBox('Moc max',
+                  '${run.maxEngineHp.toStringAsFixed(1)} KM', font),
+              _resultBox('Moment max',
+                  '${run.maxEngineTorque.toStringAsFixed(1)} Nm', font),
+              _resultBox('Korekcja DIN',
+                  'x${run.correctionFactor.toStringAsFixed(4)}', font),
+            ]),
+          pw.SizedBox(height: 14),
+          pw.Text('Dane krzywej mocy', style: pw.TextStyle(font: font,
+              fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          pw.Divider(),
+          if (spots.isEmpty)
+            pw.Text('Brak danych',
+                style: pw.TextStyle(font: font, color: PdfColors.grey))
+          else
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey300),
+              children: [
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                  children: [
+                    cell('km/h', bold: true),
+                    cell('Moc (KM)', bold: true),
+                    cell('Moment (Nm)', bold: true),
+                  ]),
+                // Co 3. punkt
+                ...List.generate((spots.length + 2) ~/ 3, (i) {
+                  final s = spots[i * 3];
+                  String nm = '-';
+                  final idx = i * 3;
+                  if (idx < run.graphDataPoints.length) {
+                    final parts = run.graphDataPoints[idx].split(';');
+                    if (parts.length >= 3)
+                      nm = double.tryParse(parts[2])?.toStringAsFixed(1) ?? '-';
+                  }
+                  return pw.TableRow(children: [
+                    cell(s.x.toStringAsFixed(1)),
+                    cell(s.y.toStringAsFixed(1)),
+                    cell(nm),
+                  ]);
+                }),
+              ]),
+          pw.Spacer(),
+          pw.Divider(),
+          pw.Text('Dyno DIY App ${DateTime.now().year}',
+              style: pw.TextStyle(font: font,
+                  fontSize: 8, color: PdfColors.grey)),
+        ],
+      ),
+    ));
+
+    final dir  = await getTemporaryDirectory();
+    final name = car.name.replaceAll(' ', '_');
+    final file = File(
+        '${dir.path}/dyno_${name}_${run.timestamp.millisecondsSinceEpoch}.pdf');
+    await file.writeAsBytes(await pdf.save());
+    await Share.shareXFiles([XFile(file.path)],
+        subject: 'Dyno DIY - ${car.name} - ${_fmtDate(run.timestamp)}');
+  }
+
+  pw.Widget _resultBox(String label, String value, pw.Font font) =>
+      pw.Container(
+        padding: const pw.EdgeInsets.all(10),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.red900),
+          borderRadius: pw.BorderRadius.circular(8),
+        ),
+        child: pw.Column(children: [
+          pw.Text(value, style: pw.TextStyle(font: font, fontSize: 16,
+              fontWeight: pw.FontWeight.bold, color: PdfColors.red900)),
+          pw.SizedBox(height: 3),
+          pw.Text(label, style: pw.TextStyle(font: font,
+              fontSize: 9, color: PdfColors.grey)),
+        ]));
+
+  // ══════════════════════════════════════════════════════════════
   //  PDF – FORMAT DO DRUKU (poziomy A4, oś X = RPM)
   // ══════════════════════════════════════════════════════════════
   Future<void> exportPrintPdf({
@@ -96,8 +255,8 @@ class ExportService {
                             color: PdfColors.grey600)),
                   pw.SizedBox(height: 3),
                   pw.Text(
-                    'Air press   ${pressureHpa?.toStringAsFixed(0) ?? "—"} hPa\n'
-                    'Air temp    ${tempC?.toStringAsFixed(1) ?? "—"} °C',
+                    'Air press   ${pressureHpa?.toStringAsFixed(0) ?? "-"} hPa\n'
+                    'Air temp    ${tempC?.toStringAsFixed(1) ?? "-"} deg C',
                     style: pw.TextStyle(font: font, fontSize: 8,
                         color: PdfColors.grey700),
                   ),
@@ -139,13 +298,13 @@ class ExportService {
                 alignment: pw.Alignment.center,
                 children: [
                   pw.SvgImage(svg: chartSvg),
-                  // Logo watermark na środku wykresu
+                  // Logo watermark na środku wykresu — 2x większe
                   if (logoImg != null)
                     pw.Opacity(
                       opacity: 0.18,
                       child: pw.Image(
                         logoImg,
-                        height: 120,
+                        height: 240,
                         fit: pw.BoxFit.contain,
                       ),
                     ),
@@ -487,7 +646,13 @@ class ExportService {
       .replaceAll('ś','s').replaceAll('ź','z').replaceAll('ż','z')
       .replaceAll('Ą','A').replaceAll('Ć','C').replaceAll('Ę','E')
       .replaceAll('Ł','L').replaceAll('Ń','N').replaceAll('Ó','O')
-      .replaceAll('Ś','S').replaceAll('Ź','Z').replaceAll('Ż','Z');
+      .replaceAll('Ś','S').replaceAll('Ź','Z').replaceAll('Ż','Z')
+      // znaki spoza Latin-1 które pdf/courier nie obsługuje:
+      .replaceAll('°','°'.codeUnitAt(0) > 127 ? 'deg' : '°')
+      .replaceAll('—', '-').replaceAll('–', '-')
+      .replaceAll('×', 'x').replaceAll('·', '.')
+      // fallback: usuń wszystko powyżej ASCII 127
+      .replaceAll(RegExp(r'[^\x00-\x7F]'), '?');
 
   String _fmtDate(DateTime dt) =>
       '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}'
