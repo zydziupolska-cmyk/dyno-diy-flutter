@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 /// Status aktualizacji OTA
@@ -141,7 +142,7 @@ class OtaService {
       // ── Negocjuj MTU ──
       // Większy MTU = większe chunki = szybszy transfer
       int mtu = await device.requestMtu(512);
-      final chunkSize = mtu - 3; // 3 bajty nagłówka ATT
+      final chunkSize = (mtu - 3).clamp(20, 512);
       print('[OTA] MTU=$mtu, chunk=$chunkSize bajtów');
 
       // ── BEGIN ──
