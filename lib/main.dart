@@ -55,7 +55,7 @@ class DynoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Dynologic',
+      title: 'Dynomic',
       theme: ThemeData.dark().copyWith(
         primaryColor: Colors.redAccent,
         scaffoldBackgroundColor: const Color(0xFF121212),
@@ -124,7 +124,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dyno DIY - Start', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Dynomic - Start', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
         actions: [
           IconButton(

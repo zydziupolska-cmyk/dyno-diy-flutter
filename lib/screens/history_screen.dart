@@ -118,7 +118,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     await Share.shareXFiles(
       [XFile(file.path)],
-      subject: 'Dyno DIY – ${car.name} – ${runs.length} pomiar(y)',
+      subject: 'Dynomic – ${car.name} – ${runs.length} pomiar(y)',
       text: 'Eksport danych hamowni GPS\nAuto: ${car.name}\nLiczba pomiarów: ${runs.length}',
     );
   }
@@ -166,7 +166,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('DYNO DIY - Raport pomiaru',
+                    pw.Text('DYNOMIC - Raport pomiaru',
                         style: pw.TextStyle(
                             font: font, color: PdfColors.white,
                             fontSize: 20, fontWeight: pw.FontWeight.bold)),
@@ -290,7 +290,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ),
                   ]),
                   pw.Text(
-                    'Dyno DIY App ${DateTime.now().year}',
+                    'Dynomic App ${DateTime.now().year}',
                     style: pw.TextStyle(font: font, fontSize: 8,
                         color: PdfColors.grey),
                   ),
@@ -310,7 +310,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     await Share.shareXFiles(
       [XFile(file.path)],
-      subject: 'Dyno DIY – ${car.name} – ${_formatDate(run.timestamp)}',
+      subject: 'Dynomic – ${car.name} – ${_formatDate(run.timestamp)}',
     );
   }
 

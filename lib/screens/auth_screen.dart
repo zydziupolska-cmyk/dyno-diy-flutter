@@ -37,17 +37,12 @@ class _AuthScreenState extends State<AuthScreen>
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 40, 24, 0),
             child: Row(children: [
-              Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFE51C1C), width: 2),
-                ),
-                child: const Icon(Icons.show_chart,
-                    color: Color(0xFFE51C1C), size: 20),
+              Image.asset(
+                'assets/images/logo.png',
+                width: 44, height: 44,
               ),
               const SizedBox(width: 12),
-              const Text('Dynologic',
+              const Text('Dynomic',
                   style: TextStyle(
                       fontSize: 22, fontWeight: FontWeight.w800,
                       color: Colors.white, letterSpacing: -.5)),
@@ -158,7 +153,7 @@ class _LoginFormState extends State<_LoginForm> {
                   fontSize: 22, fontWeight: FontWeight.w800,
                   color: Colors.white)),
           const SizedBox(height: 6),
-          const Text('Log in to your Dynologic account',
+          const Text('Log in to your Dynomic account',
               style: TextStyle(color: Colors.grey, fontSize: 14)),
           const SizedBox(height: 28),
 
@@ -198,7 +193,7 @@ class _LoginFormState extends State<_LoginForm> {
                 // TODO Etap 4: reset hasła
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Password reset coming soon. Visit dynologic.io'),
+                    content: Text('Password reset coming soon. Visit dynomic.pro'),
                   ),
                 );
               },
@@ -365,7 +360,7 @@ class _RegisterFormState extends State<_RegisterForm> {
             onChanged: (v) => setState(() => _terms = v),
             label: 'I agree to the Terms of Service and Privacy Policy',
             linkText: 'Terms of Service',
-            linkUrl: 'https://dynologic.io/terms',
+            linkUrl: 'https://dynomic.pro/terms',
           ),
 
           const SizedBox(height: 8),

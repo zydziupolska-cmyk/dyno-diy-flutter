@@ -70,7 +70,7 @@ class ExportService {
                 borderRadius: pw.BorderRadius.circular(8)),
             child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('DYNO DIY - Raport pomiaru',
+                pw.Text('DYNOMIC - Raport pomiaru',
                     style: pw.TextStyle(font: font, color: PdfColors.white,
                         fontSize: 18, fontWeight: pw.FontWeight.bold)),
                 pw.SizedBox(height: 4),
@@ -137,7 +137,7 @@ class ExportService {
               ]),
           pw.Spacer(),
           pw.Divider(),
-          pw.Text('Dyno DIY App ${DateTime.now().year}',
+          pw.Text('Dynomic App ${DateTime.now().year}',
               style: pw.TextStyle(font: font,
                   fontSize: 8, color: PdfColors.grey)),
         ],
@@ -150,7 +150,7 @@ class ExportService {
         '${dir.path}/dyno_${name}_${run.timestamp.millisecondsSinceEpoch}.pdf');
     await file.writeAsBytes(await pdf.save());
     await Share.shareXFiles([XFile(file.path)],
-        subject: 'Dyno DIY - ${car.name} - ${_fmtDate(run.timestamp)}');
+        subject: 'Dynomic - ${car.name} - ${_fmtDate(run.timestamp)}');
   }
 
   pw.Widget _resultBox(String label, String value, pw.Font font) =>
@@ -353,7 +353,7 @@ class ExportService {
                   pw.Text(
                     workshop.customText.isNotEmpty
                         ? workshop.customText
-                        : 'Pomiar GPS · Dyno DIY App',
+                        : 'Pomiar GPS · Dynomic App',
                     style: pw.TextStyle(font: font, fontSize: 8,
                         color: PdfColors.grey600),
                   ),
@@ -371,7 +371,7 @@ class ExportService {
         '${dir.path}/dyno_print_${name}_${run.timestamp.millisecondsSinceEpoch}.pdf');
     await file.writeAsBytes(await pdf.save());
     await Share.shareXFiles([XFile(file.path)],
-        subject: 'Dyno DIY – ${car.name} – wydruk');
+        subject: 'Dynomic – ${car.name} – wydruk');
   }
 
   // ── Generuj wykres jako SVG string ───────────────────────────────────────
@@ -571,7 +571,7 @@ class ExportService {
         '${dir.path}/dyno_${name}_${DateTime.now().millisecondsSinceEpoch}.xml');
     await file.writeAsString(buf.toString());
     await Share.shareXFiles([XFile(file.path)],
-        subject: 'Dyno DIY – ${car.name} – ${runs.length} pomiar(y)');
+        subject: 'Dynomic – ${car.name} – ${runs.length} pomiar(y)');
   }
 
   // ══════════════════════════════════════════════════════════════
