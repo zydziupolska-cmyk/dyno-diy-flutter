@@ -13,6 +13,7 @@ import 'screens/auth_screen.dart';
 import 'services/database_service.dart';
 import 'services/bluetooth_service.dart';
 import 'services/auth_service.dart';
+import 'services/measurement_upload_service.dart';
 import 'models/car_profile.dart';
 
 final dbService  = DatabaseService();
@@ -31,6 +32,12 @@ Future<void> main() async {
 
   // Podepnij AuthService do BLE — potrzebny do handshake licencyjnego
   btService.setAuthService(authService);
+
+  // Zsynchronizuj niezsynkowane pomiary w tle (nie blokuje startu)
+  Future.delayed(const Duration(seconds: 3), () {
+    final syncSvc = MeasurementUploadService(authService);
+    syncSvc.syncPending(dbService);
+  });
 
   // Poproś o uprawnienia Bluetooth i lokalizacji
   await [

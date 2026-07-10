@@ -391,15 +391,19 @@ class _DynoScreenState extends State<DynoScreen> {
       weightKg:   _weight,
       correction: widget.weatherCf,
       measuredAt: run.timestamp,
-    ).then((ok) {
-      if (ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('☁️ Pomiar zsynchronizowany z chmurą'),
-            backgroundColor: Colors.blueAccent,
-            duration: Duration(seconds: 2),
-          ),
-        );
+    ).then((ok) async {
+      if (ok) {
+        // Oznacz lokalny pomiar jako zsynchronizowany
+        await dbService.markRunSynced(run.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('☁️ Pomiar zsynchronizowany z chmurą'),
+              backgroundColor: Colors.blueAccent,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
       }
     });
 

@@ -10,7 +10,7 @@ class DatabaseService {
     final path = join(await getDatabasesPath(), 'dyno_diy.db');
     _db = await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: (db, version) async {
         await _createTables(db);
       },
@@ -38,6 +38,13 @@ class DatabaseService {
             )
           ''');
         }
+        if (oldVersion < 4) {
+          // Dodaj kolumnę synced — 0 = nie zsync, 1 = zsync z chmurą
+          // Wszystkie istniejące pomiary dostają 0 (niezsynkowane)
+          await db.execute(
+            'ALTER TABLE runs ADD COLUMN synced INTEGER NOT NULL DEFAULT 0'
+          );
+        }
       },
     );
   }
@@ -64,7 +71,8 @@ class DatabaseService {
         maxEngineTorque REAL NOT NULL,
         sessionWeightKg REAL NOT NULL,
         correctionFactor REAL NOT NULL,
-        graphDataPoints TEXT NOT NULL
+        graphDataPoints TEXT NOT NULL,
+        synced INTEGER NOT NULL DEFAULT 0
       )
     ''');
     await db.execute('''
@@ -117,6 +125,25 @@ class DatabaseService {
   // --- RUNS ---
   Future<void> saveRun(DynoRun run) async {
     await db.insert('runs', run.toMap());
+  }
+
+  Future<void> markRunSynced(int runId) async {
+    await db.update(
+      'runs',
+      {'synced': 1},
+      where: 'id = ?',
+      whereArgs: [runId],
+    );
+  }
+
+  /// Zwraca wszystkie pomiary które nie zostały jeszcze zsynchronizowane
+  Future<List<DynoRun>> getUnsyncedRuns() async {
+    final maps = await db.query(
+      'runs',
+      where: 'synced = 0',
+      orderBy: 'timestamp ASC',
+    );
+    return maps.map(DynoRun.fromMap).toList();
   }
 
   Future<List<DynoRun>> getRunsForCar(int carId) async {

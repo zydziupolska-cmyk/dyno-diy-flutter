@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'auth_service.dart';
+import 'database_service.dart';
+import '../models/car_profile.dart';
 
 /// Serwis do wysyłania pomiarów na serwer gdy user ma włączony cloud sync.
 class MeasurementUploadService {
@@ -63,5 +65,32 @@ class MeasurementUploadService {
       debugPrint('[UPLOAD] ✗ Błąd sieci: $e');
       return false;
     }
+  }
+
+  /// Synchronizuje wszystkie lokalne pomiary które nie trafiły jeszcze
+  /// na serwer. Wywołaj przy starcie aplikacji lub po wykryciu połączenia.
+  Future<void> syncPending(DatabaseService db) async {
+    if (!_auth.isLoggedIn || _auth.user?.measurementsUpload != true) return;
+
+    final unsynced = await db.getUnsyncedRuns();
+    if (unsynced.isEmpty) return;
+
+    debugPrint('[SYNC] Znaleziono ${unsynced.length} niezsynkowanych pomiarów');
+
+    int ok = 0;
+    for (final run in unsynced) {
+      final success = await upload(
+        maxHp:      run.maxEngineHp,
+        maxNm:      run.maxEngineTorque,
+        weightKg:   run.sessionWeightKg,
+        correction: run.correctionFactor,
+        measuredAt: run.timestamp,
+      );
+      if (success && run.id > 0) {
+        await db.markRunSynced(run.id);
+        ok++;
+      }
+    }
+    debugPrint('[SYNC] Zsynchronizowano $ok/${unsynced.length} pomiarów');
   }
 }
