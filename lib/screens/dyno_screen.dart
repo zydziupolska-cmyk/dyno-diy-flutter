@@ -2,9 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../models/car_profile.dart';
-import '../models/workshop_settings.dart';
 import '../utils/physics_engine.dart';
 import '../services/bluetooth_service.dart';
+import '../services/measurement_upload_service.dart';
 import '../main.dart';
 import 'history_screen.dart';
 import 'gps_replay_screen.dart';
@@ -381,6 +381,27 @@ class _DynoScreenState extends State<DynoScreen> {
     );
     await dbService.saveRun(run);
     if (!mounted) return;
+
+    // ── Upload do chmury (jeśli user ma cloud sync włączony) ──
+    // Robimy w tle, nie blokuje UI, błąd jest tylko logowany
+    final uploadSvc = MeasurementUploadService(authService);
+    uploadSvc.upload(
+      maxHp:      maxHp,
+      maxNm:      maxNm,
+      weightKg:   _weight,
+      correction: widget.weatherCf,
+      measuredAt: run.timestamp,
+    ).then((ok) {
+      if (ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('☁️ Pomiar zsynchronizowany z chmurą'),
+            backgroundColor: Colors.blueAccent,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    });
 
     setState(() {
       _spots..clear()..addAll(correctedSpots);

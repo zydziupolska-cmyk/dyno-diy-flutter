@@ -107,7 +107,7 @@ class DlLicense {
 ///   http: ^1.2.0
 ///   flutter_secure_storage: ^9.0.0
 class AuthService extends ChangeNotifier {
-  static const String _baseUrl = 'https://dynologic.io';
+  static const String _baseUrl = 'https://dynomic.pro';
 
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -121,6 +121,7 @@ class AuthService extends ChangeNotifier {
   DlUser?    _user;
   DlLicense? _license;
   String?    _token;
+  String?    get token => _token;
   bool       _initialized = false;
 
   DlUser?    get user        => _user;
