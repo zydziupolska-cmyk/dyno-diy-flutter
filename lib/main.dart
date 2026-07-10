@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 import 'screens/garage_screen.dart';
 import 'screens/calibration_screen.dart';
 import 'screens/prelaunch_screen.dart';
@@ -9,20 +10,28 @@ import 'screens/workshop_settings_screen.dart';
 import 'screens/gps_diagnostics_screen.dart';
 import 'screens/gps_replay_screen.dart';
 import 'screens/ota_update_screen.dart';
+import 'screens/auth_screen.dart';
 import 'services/database_service.dart';
-import 'models/car_profile.dart';
 import 'services/bluetooth_service.dart';
+import 'services/auth_service.dart';
+import 'models/car_profile.dart';
 
-final dbService = DatabaseService();
-final btService = AppBleService();
+final dbService  = DatabaseService();
+final btService  = AppBleService();
+final authService = AuthService();
 
 // Cache danych sesji pomiaru – przeżywa rebuild zakładek
-// klucz = carId, wartość = {weight, temp, pressure}
 final Map<int, Map<String, double>> sessionCache = {};
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dbService.init();
+
+  // Wczytaj zapisaną sesję (token, user, licencja z secure storage)
+  await authService.init();
+
+  // Podepnij AuthService do BLE — potrzebny do handshake licencyjnego
+  btService.setAuthService(authService);
 
   // Poproś o uprawnienia Bluetooth i lokalizacji
   await [
@@ -32,7 +41,12 @@ Future<void> main() async {
     Permission.locationWhenInUse,
   ].request();
 
-  runApp(const DynoApp());
+  runApp(
+    ChangeNotifierProvider<AuthService>.value(
+      value: authService,
+      child: const DynoApp(),
+    ),
+  );
 }
 
 class DynoApp extends StatelessWidget {
@@ -41,13 +55,40 @@ class DynoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Dyno DIY',
+      title: 'Dynologic',
       theme: ThemeData.dark().copyWith(
         primaryColor: Colors.redAccent,
         scaffoldBackgroundColor: const Color(0xFF121212),
       ),
-      home: const MainMenuScreen(),
+      home: const AuthGate(),
     );
+  }
+}
+
+/// Bramka: pokazuje ekran logowania gdy user niezalogowany,
+/// główne menu gdy zalogowany i ma licencję.
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthService>();
+
+    if (!auth.initialized) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF121212),
+        body: Center(
+          child: CircularProgressIndicator(color: Colors.redAccent),
+        ),
+      );
+    }
+
+    if (!auth.isLoggedIn) {
+      return const AuthScreen();
+    }
+
+    // Zalogowany — pokaż główne menu
+    return const MainMenuScreen();
   }
 }
 

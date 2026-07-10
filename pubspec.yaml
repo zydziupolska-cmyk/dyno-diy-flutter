@@ -1,5 +1,5 @@
 name: dyno_diy
-description: "A new Flutter project."
+description: "Dynologic – GPS Performance Analyzer"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -43,8 +43,6 @@ dependencies:
   share_plus: ^7.2.1
   # Matematyka (np. pierwiastki do normy DIN)
   vector_math: ^2.1.4
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   path_provider: ^2.1.2
   permission_handler: ^12.0.1
@@ -52,6 +50,10 @@ dependencies:
   printing: ^5.13.1
   image_picker: ^1.1.2
   file_picker: ^8.1.2
+  # System licencji i autoryzacji
+  http: ^1.2.0
+  flutter_secure_storage: ^9.0.0
+  provider: ^6.1.0
 
 dev_dependencies:
   flutter_test:
@@ -72,10 +74,15 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
 
+  uses-material-design: true
+
+  # Firmware ESP32 — odkomentuj gdy wgrasz plik .bin do assets/firmware/
+  # assets:
+  #   - assets/firmware/dyno_esp32.bin
+
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
-  uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
   # assets:

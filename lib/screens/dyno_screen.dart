@@ -68,11 +68,25 @@ class _DynoScreenState extends State<DynoScreen> {
 
   DynoRun? _savedRun;
 
+  // ── Status licencji BLE ──────────────────────────────────────
+  BleAuthState _bleAuthState = BleAuthState.unknown;
+  StreamSubscription<BleAuthState>? _authSub;
+
   double get _weight => widget.overrideWeight ?? widget.car.weightKg;
   bool   get _useRpm => widget.kFactor != null && widget.kFactor! > 0;
 
   @override
+  void initState() {
+    super.initState();
+    _bleAuthState = btService.authState;
+    _authSub = btService.licenseStatusStream.listen((state) {
+      if (mounted) setState(() => _bleAuthState = state);
+    });
+  }
+
+  @override
   void dispose() {
+    _authSub?.cancel();
     _frameSub?.cancel();
     _coastingTimer?.cancel();
     _countdownTimer?.cancel();
@@ -104,6 +118,26 @@ class _DynoScreenState extends State<DynoScreen> {
     if (!btService.isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('ESP32 nie jest połączony!')));
+      return;
+    }
+
+    // Blokuj start gdy licencja niezweryfikowana
+    // (notSupported = stary firmware — przepuszczamy dla kompatybilności)
+    final auth = btService.authState;
+    if (auth == BleAuthState.unauthorized ||
+        auth == BleAuthState.noLicense) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(auth == BleAuthState.noLicense
+          ? 'Brak licencji. Zaloguj się w ustawieniach aplikacji.'
+          : 'Nieautoryzowane urządzenie. Sprawdź czy to Twój sprzęt.'),
+        backgroundColor: Colors.redAccent,
+      ));
+      return;
+    }
+
+    if (auth == BleAuthState.verifying) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Trwa weryfikacja licencji, zaczekaj...')));
       return;
     }
     setState(() {
@@ -368,6 +402,36 @@ class _DynoScreenState extends State<DynoScreen> {
         ? 'GOTOWY DO STARTU' : 'CZEKAM NA ESP32...';
     Color statusColor = btService.isConnected
         ? Colors.grey : Colors.orangeAccent;
+
+    // Nadpisz status jeśli trwa weryfikacja licencji lub odmowa
+    if (btService.isConnected) {
+      switch (_bleAuthState) {
+        case BleAuthState.verifying:
+          statusText  = '🔐 WERYFIKACJA LICENCJI...';
+          statusColor = Colors.orangeAccent;
+          break;
+        case BleAuthState.unauthorized:
+          statusText  = '⛔ NIEAUTORYZOWANE URZĄDZENIE';
+          statusColor = Colors.redAccent;
+          break;
+        case BleAuthState.noLicense:
+          statusText  = '⚠️ BRAK LICENCJI — ZALOGUJ SIĘ';
+          statusColor = Colors.redAccent;
+          break;
+        case BleAuthState.authorized:
+          statusText  = 'GOTOWY DO STARTU ✓';
+          statusColor = Colors.grey;
+          break;
+        case BleAuthState.notSupported:
+          statusText  = 'POŁĄCZONO (tryb legacy)';
+          statusColor = Colors.grey;
+          break;
+        case BleAuthState.unknown:
+          statusText  = 'ŁĄCZENIE...';
+          statusColor = Colors.orangeAccent;
+          break;
+      }
+    }
 
     if (_countdown > 0) {
       statusText  = 'START ZA $_countdown...';

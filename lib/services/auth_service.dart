@@ -1,0 +1,272 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+// ── Modele ───────────────────────────────────────────────────
+
+class DlUser {
+  final int    id;
+  final String email;
+  final String firstName;
+  final String lastName;
+  final String language;
+  final bool   isAdmin;
+  final bool   measurementsUpload;
+  final bool   emailVerified;
+
+  const DlUser({
+    required this.id,
+    required this.email,
+    required this.firstName,
+    required this.lastName,
+    required this.language,
+    required this.isAdmin,
+    required this.measurementsUpload,
+    required this.emailVerified,
+  });
+
+  factory DlUser.fromJson(Map<String, dynamic> j) => DlUser(
+    id:                  j['id']                   as int,
+    email:               j['email']                as String,
+    firstName:           j['first_name']           as String,
+    lastName:            j['last_name']            as String,
+    language:            j['language']             as String? ?? 'en',
+    isAdmin:             j['is_admin']             as bool? ?? false,
+    measurementsUpload:  j['measurements_upload']  as bool? ?? false,
+    emailVerified:       j['email_verified']       as bool? ?? false,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id':                  id,
+    'email':               email,
+    'first_name':          firstName,
+    'last_name':           lastName,
+    'language':            language,
+    'is_admin':            isAdmin,
+    'measurements_upload': measurementsUpload,
+    'email_verified':      emailVerified,
+  };
+}
+
+class DlLicense {
+  final String payload;     // JSON z userId, serial, issuedAt, expiresAt
+  final String signature;   // Ed25519 podpis serwera (base64)
+  final String serverPubkey;// Klucz publiczny serwera (base64)
+  final String expiresAt;
+
+  const DlLicense({
+    required this.payload,
+    required this.signature,
+    required this.serverPubkey,
+    required this.expiresAt,
+  });
+
+  factory DlLicense.fromJson(Map<String, dynamic> j) => DlLicense(
+    payload:      j['payload']       as String,
+    signature:    j['signature']     as String,
+    serverPubkey: j['server_pubkey'] as String,
+    expiresAt:    j['expires_at']    as String,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'payload':       payload,
+    'signature':     signature,
+    'server_pubkey': serverPubkey,
+    'expires_at':    expiresAt,
+  };
+
+  /// Zwraca userId z payloadu (bez weryfikacji sygnatury — to robi ESP32)
+  int? get userId {
+    try {
+      return (jsonDecode(payload) as Map)['userId'] as int?;
+    } catch (_) { return null; }
+  }
+
+  /// Zwraca serial urządzenia z payloadu
+  String? get deviceSerial {
+    try {
+      return (jsonDecode(payload) as Map)['serial'] as String?;
+    } catch (_) { return null; }
+  }
+
+  /// Czy licencja jest nadal ważna (sprawdzenie daty po stronie klienta)
+  bool get isExpired {
+    try {
+      return DateTime.parse(expiresAt).isBefore(DateTime.now());
+    } catch (_) { return true; }
+  }
+}
+
+// ── AuthService ──────────────────────────────────────────────
+
+/// Serwis autoryzacji — logowanie, rejestracja, cache licencji.
+/// Używa flutter_secure_storage do bezpiecznego przechowywania tokenu i licencji.
+///
+/// Wymagane pakiety w pubspec.yaml:
+///   http: ^1.2.0
+///   flutter_secure_storage: ^9.0.0
+class AuthService extends ChangeNotifier {
+  static const String _baseUrl = 'https://dynologic.io';
+
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
+
+  // Storage keys
+  static const _kToken   = 'dl_auth_token';
+  static const _kUser    = 'dl_user_json';
+  static const _kLicense = 'dl_license_json';
+
+  DlUser?    _user;
+  DlLicense? _license;
+  String?    _token;
+  bool       _initialized = false;
+
+  DlUser?    get user        => _user;
+  DlLicense? get license     => _license;
+  bool       get isLoggedIn  => _token != null && _user != null;
+  bool       get hasLicense  => _license != null && !(_license!.isExpired);
+  bool       get initialized => _initialized;
+
+  // ── Init (wywołaj przy starcie app) ─────────────────────────
+  Future<void> init() async {
+    try {
+      _token = await _storage.read(key: _kToken);
+      final userJson    = await _storage.read(key: _kUser);
+      final licenseJson = await _storage.read(key: _kLicense);
+
+      if (userJson    != null) _user    = DlUser.fromJson(jsonDecode(userJson));
+      if (licenseJson != null) _license = DlLicense.fromJson(jsonDecode(licenseJson));
+    } catch (e) {
+      debugPrint('[AuthService] init error: $e');
+    }
+    _initialized = true;
+    notifyListeners();
+  }
+
+  // ── Rejestracja ─────────────────────────────────────────────
+  Future<({bool ok, String? error})> register({
+    required String email,
+    required String password,
+    required String firstName,
+    required String serial,
+    String lastName            = '',
+    String language            = 'en',
+    bool   measurementsUpload  = false,
+  }) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_baseUrl/api/auth/register.php'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email':                email.trim().toLowerCase(),
+          'password':             password,
+          'first_name':           firstName.trim(),
+          'last_name':            lastName.trim(),
+          'serial':               serial.trim().toUpperCase(),
+          'language':             language,
+          'measurements_upload':  measurementsUpload,
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      final json = jsonDecode(res.body) as Map<String, dynamic>;
+      if (json['ok'] == true) {
+        return (ok: true, error: null);
+      }
+      return (ok: false, error: json['error'] as String? ?? 'Registration failed');
+    } on Exception catch (e) {
+      return (ok: false, error: 'Network error: $e');
+    }
+  }
+
+  // ── Logowanie ────────────────────────────────────────────────
+  Future<({bool ok, String? error})> login({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_baseUrl/api/auth/login.php'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email':       email.trim().toLowerCase(),
+          'password':    password,
+          'device_info': 'Flutter App',
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      final json = jsonDecode(res.body) as Map<String, dynamic>;
+      if (json['ok'] == true) {
+        _token = json['token'] as String;
+        _user  = DlUser.fromJson(json['user'] as Map<String, dynamic>);
+
+        // Zapisz bezpiecznie
+        await _storage.write(key: _kToken, value: _token);
+        await _storage.write(key: _kUser,  value: jsonEncode(_user!.toJson()));
+
+        notifyListeners();
+
+        // Pobierz licencję od razu po logowaniu
+        await fetchLicense();
+
+        return (ok: true, error: null);
+      }
+      return (ok: false, error: json['error'] as String? ?? 'Login failed');
+    } on Exception catch (e) {
+      return (ok: false, error: 'Network error: $e');
+    }
+  }
+
+  // ── Pobierz licencję ─────────────────────────────────────────
+  Future<bool> fetchLicense() async {
+    if (_token == null) return false;
+    try {
+      final res = await http.get(
+        Uri.parse('$_baseUrl/api/license/get.php'),
+        headers: {'Authorization': 'Bearer $_token'},
+      ).timeout(const Duration(seconds: 15));
+
+      final json = jsonDecode(res.body) as Map<String, dynamic>;
+      if (json['ok'] == true && json['license'] != null) {
+        _license = DlLicense.fromJson(json['license'] as Map<String, dynamic>);
+        await _storage.write(
+          key:   _kLicense,
+          value: jsonEncode(_license!.toJson()),
+        );
+        notifyListeners();
+        return true;
+      }
+    } on Exception catch (e) {
+      debugPrint('[AuthService] fetchLicense error: $e');
+    }
+    return false;
+  }
+
+  // ── Wylogowanie ──────────────────────────────────────────────
+  Future<void> logout() async {
+    // Wyślij żądanie wylogowania do serwera (opcjonalne — może nie mieć sieci)
+    if (_token != null) {
+      try {
+        await http.post(
+          Uri.parse('$_baseUrl/api/auth/logout.php'),
+          headers: {'Authorization': 'Bearer $_token'},
+        ).timeout(const Duration(seconds: 5));
+      } catch (_) {
+        // Ignoruj błąd sieci — i tak czyścimy lokalnie
+      }
+    }
+
+    _token   = null;
+    _user    = null;
+    _license = null;
+    await _storage.deleteAll();
+    notifyListeners();
+  }
+
+  // ── Helper do zapytań API z tokenem ─────────────────────────
+  Map<String, String> get authHeaders => {
+    'Authorization': 'Bearer ${_token ?? ''}',
+    'Content-Type':  'application/json',
+  };
+}
