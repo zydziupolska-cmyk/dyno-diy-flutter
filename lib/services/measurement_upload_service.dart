@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'auth_service.dart';
 import 'database_service.dart';
-import '../models/car_profile.dart';
 
 /// Serwis do wysyłania pomiarów na serwer gdy user ma włączony cloud sync.
 class MeasurementUploadService {
