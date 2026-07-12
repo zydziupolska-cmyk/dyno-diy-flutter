@@ -151,6 +151,38 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                   builder: (_) => const WorkshopSettingsScreen()),
             ),
           ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Wyloguj',
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: const Color(0xFF1A1A1A),
+                  title: const Text('Wyloguj',
+                      style: TextStyle(color: Colors.white)),
+                  content: const Text(
+                      'Czy na pewno chcesz się wylogować?',
+                      style: TextStyle(color: Colors.grey)),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Anuluj',
+                          style: TextStyle(color: Colors.grey)),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Wyloguj',
+                          style: TextStyle(color: Colors.redAccent)),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true && context.mounted) {
+                await authService.logout();
+              }
+            },
+          ),
         ],
       ),
       body: Padding(
