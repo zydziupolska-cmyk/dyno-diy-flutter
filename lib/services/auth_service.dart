@@ -32,9 +32,9 @@ class DlUser {
     firstName:           j['first_name']           as String,
     lastName:            j['last_name']            as String,
     language:            j['language']             as String? ?? 'en',
-    isAdmin:             j['is_admin']             as bool? ?? false,
-    measurementsUpload:  j['measurements_upload']  as bool? ?? false,
-    emailVerified:       j['email_verified']       as bool? ?? false,
+    isAdmin:             (j['is_admin']            == true || j['is_admin']            == 1),
+    measurementsUpload:  (j['measurements_upload'] == true || j['measurements_upload'] == 1),
+    emailVerified:       (j['email_verified']      == true || j['email_verified']      == 1),
   );
 
   Map<String, dynamic> toJson() => {

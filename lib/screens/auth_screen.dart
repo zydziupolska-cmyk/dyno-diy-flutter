@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_service.dart';
 
 /// Ekran autoryzacji — logowanie i rejestracja w jednym ekranie z zakładkami.
@@ -189,13 +190,12 @@ class _LoginFormState extends State<_LoginForm> {
           const SizedBox(height: 16),
           Center(
             child: TextButton(
-              onPressed: () {
-                // TODO Etap 4: reset hasła
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Password reset coming soon. Visit dynomic.pro'),
-                  ),
-                );
+              onPressed: () async {
+                // Otwórz stronę resetu hasła
+                final uri = Uri.parse('https://dynomic.pro/forgot');
+                // ignore: deprecated_member_use
+                if (await canLaunchUrl(uri)) launchUrl(uri,
+                  mode: LaunchMode.externalApplication);
               },
               child: const Text('Forgot password?',
                   style: TextStyle(color: Color(0xFFE51C1C))),

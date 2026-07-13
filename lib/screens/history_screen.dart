@@ -8,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:file_picker/file_picker.dart';
 import '../models/car_profile.dart';
 import '../services/export_service.dart';
+import '../services/measurement_upload_service.dart';
 import '../main.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -72,7 +73,71 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
-  // ── EKSPORT XML ───────────────────────────────────────────────────────────
+  // ── UPLOAD DO CHMURY ─────────────────────────────────────────
+  Future<void> _uploadSelected() async {
+    if (_selectedRunIds.isEmpty) return;
+
+    final selected = _runs
+        .where((r) => _selectedRunIds.contains(r.id))
+        .toList();
+
+    if (!authService.isLoggedIn) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Zaloguj się aby wysyłać pomiary do chmury')),
+        );
+      }
+      return;
+    }
+
+    if (authService.user?.measurementsUpload != true) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Włącz cloud sync w ustawieniach aplikacji'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Pokaż progress
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Wysyłam ${selected.length} pomiarów...'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
+    final svc = MeasurementUploadService(authService);
+    int ok = 0;
+    for (final run in selected) {
+      final success = await svc.upload(
+        maxHp:      run.maxEngineHp,
+        maxNm:      run.maxEngineTorque,
+        weightKg:   run.sessionWeightKg,
+        correction: run.correctionFactor,
+        measuredAt: run.timestamp,
+      );
+      if (success) {
+        await dbService.markRunSynced(run.id);
+        ok++;
+      }
+    }
+
+    if (mounted) {
+      setState(() => _selectedRunIds.clear());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('☁️ Zsynchronizowano $ok/${selected.length} pomiarów'),
+          backgroundColor: ok == selected.length ? Colors.blue : Colors.orange,
+        ),
+      );
+    }
+  }
   Future<void> _exportXml(List<DynoRun> runs) async {
     if (runs.isEmpty) return;
     final car = _selectedCar!;
@@ -524,7 +589,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
             tooltip: 'Importuj XML',
             onPressed: _importXml,
           ),
-          if (_selectedRunIds.isNotEmpty)
+          if (_selectedRunIds.isNotEmpty) ...[
+            IconButton(
+              icon: const Icon(Icons.cloud_upload_outlined),
+              tooltip: 'Wyślij zaznaczone do chmury',
+              onPressed: _uploadSelected,
+            ),
             IconButton(
               icon: const Icon(Icons.code),
               tooltip: 'Eksportuj XML',
@@ -536,6 +606,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 exportSvc.exportXml(runs: selected, car: _selectedCar!);
               },
             ),
+          ],
         ],
       ),
       body: Column(
