@@ -3,6 +3,33 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'auth_service.dart';
 import 'database_service.dart';
+import '../models/car_profile.dart';
+
+/// Generuje kompaktowy XML z punktów wykresu
+String _buildXml(DynoRun run) {
+  final buf = StringBuffer();
+  buf.writeln('<?xml version="1.0" encoding="UTF-8"?>');
+  buf.writeln('<DynoRun>');
+  buf.writeln('  <MaxHp>${run.maxEngineHp.toStringAsFixed(2)}</MaxHp>');
+  buf.writeln('  <MaxNm>${run.maxEngineTorque.toStringAsFixed(2)}</MaxNm>');
+  buf.writeln('  <WeightKg>${run.sessionWeightKg.toStringAsFixed(1)}</WeightKg>');
+  buf.writeln('  <Correction>${run.correctionFactor.toStringAsFixed(6)}</Correction>');
+  buf.writeln('  <DataPoints count="${run.graphDataPoints.length}">');
+  for (final pt in run.graphDataPoints) {
+    final parts = pt.split(';');
+    if (parts.length >= 2) {
+      final speed = parts[0];
+      final hp    = parts[1];
+      final nm    = parts.length >= 3 ? parts[2] : '';
+      buf.write('    <P s="$speed" h="$hp"');
+      if (nm.isNotEmpty && nm != '0') buf.write(' n="$nm"');
+      buf.writeln('/>');
+    }
+  }
+  buf.writeln('  </DataPoints>');
+  buf.writeln('</DynoRun>');
+  return buf.toString();
+}
 
 /// Serwis do wysyłania pomiarów na serwer gdy user ma włączony cloud sync.
 class MeasurementUploadService {
@@ -11,21 +38,16 @@ class MeasurementUploadService {
   final AuthService _auth;
   MeasurementUploadService(this._auth);
 
-  /// Wysyła wynik pomiaru na serwer.
-  /// Wywoływane automatycznie po zapisaniu pomiaru jeśli user
-  /// ma włączony cloud sync (measurements_upload = true).
-  ///
-  /// Nie rzuca wyjątków — błędy są logowane, pomiar jest już
-  /// zapisany lokalnie więc upload jest "nice to have".
+  /// Wysyła wynik pomiaru na serwer z pełnym XML danych wykresu.
   Future<bool> upload({
     required double maxHp,
     required double maxNm,
     required double weightKg,
     required double correction,
     required DateTime measuredAt,
+    DynoRun? run,
     String? xmlData,
   }) async {
-    // Sprawdź czy user jest zalogowany i ma cloud sync włączony
     if (!_auth.isLoggedIn) {
       debugPrint('[UPLOAD] Pominięto — user niezalogowany');
       return false;
@@ -35,12 +57,16 @@ class MeasurementUploadService {
       return false;
     }
 
+    // Generuj XML jeśli mamy pełne dane pomiaru
+    final xml = xmlData ?? (run != null ? _buildXml(run) : null);
+    debugPrint('[UPLOAD] XML: ${xml != null ? "${xml.length} bajtów" : "brak"}');
+
     try {
       final res = await http.post(
         Uri.parse('$_baseUrl/api/measurements/upload.php'),
         headers: {
           'Content-Type':  'application/json',
-          'Authorization': 'Bearer ${_auth.token}',
+          'Authorization': 'Bearer ${_auth.token ?? ""}',
         },
         body: jsonEncode({
           'measured_at': measuredAt.toUtc().toIso8601String(),
@@ -48,16 +74,16 @@ class MeasurementUploadService {
           'max_nm':      maxNm,
           'weight_kg':   weightKg,
           'correction':  correction,
-          ...?( xmlData != null ? {'xml_data': xmlData} : null),
+          if (xml != null) 'xml_data': xml,
         }),
-      ).timeout(const Duration(seconds: 15));
+      ).timeout(const Duration(seconds: 20));
 
       final json = jsonDecode(res.body) as Map<String, dynamic>;
       if (json['ok'] == true) {
         debugPrint('[UPLOAD] ✓ Pomiar zapisany w chmurze (id=${json['id']})');
         return true;
       } else {
-        debugPrint('[UPLOAD] ✗ Błąd serwera: ${json['error']}');
+        debugPrint('[UPLOAD] ✗ HTTP ${res.statusCode}: ${res.body}');
         return false;
       }
     } catch (e) {
@@ -66,8 +92,7 @@ class MeasurementUploadService {
     }
   }
 
-  /// Synchronizuje wszystkie lokalne pomiary które nie trafiły jeszcze
-  /// na serwer. Wywołaj przy starcie aplikacji lub po wykryciu połączenia.
+  /// Synchronizuje wszystkie lokalne pomiary niezsynkowane z chmurą.
   Future<void> syncPending(DatabaseService db) async {
     if (!_auth.isLoggedIn || _auth.user?.measurementsUpload != true) return;
 
@@ -84,6 +109,7 @@ class MeasurementUploadService {
         weightKg:   run.sessionWeightKg,
         correction: run.correctionFactor,
         measuredAt: run.timestamp,
+        run:        run,  // przekaż pełny run do generowania XML
       );
       if (success && run.id > 0) {
         await db.markRunSynced(run.id);

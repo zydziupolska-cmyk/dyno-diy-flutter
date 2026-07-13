@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:http/http.dart' as http;
 import '../models/car_profile.dart';
 import '../utils/physics_engine.dart';
 import '../services/bluetooth_service.dart';
@@ -391,6 +393,7 @@ class _DynoScreenState extends State<DynoScreen> {
       weightKg:   _weight,
       correction: widget.weatherCf,
       measuredAt: run.timestamp,
+      run:        run,  // pełne dane do XML
     ).then((ok) async {
       if (ok) {
         // Oznacz lokalny pomiar jako zsynchronizowany
@@ -472,14 +475,74 @@ class _DynoScreenState extends State<DynoScreen> {
       statusColor = Colors.redAccent;
     }
 
-    final minX = _useRpm ? 1000.0 : 20.0;
-    final maxX = _useRpm ? 6500.0 : 200.0;
+    // Dynamiczny zakres osi X — zaczyna od pierwszego punktu danych
+    final double minX = _spots.isEmpty
+        ? (_useRpm ? 1000.0 : 20.0)
+        : (_spots.first.x - (_useRpm ? 100.0 : 2.0)).clamp(
+            _useRpm ? 800.0 : 0.0, double.infinity);
+    final double maxX = _spots.isEmpty
+        ? (_useRpm ? 6500.0 : 200.0)
+        : (_spots.last.x + (_useRpm ? 200.0 : 5.0)).clamp(
+            0.0, _useRpm ? 8000.0 : 280.0);
+    // Dynamiczny maxY z danych + 15% margines
+    final double maxY = _spots.isEmpty
+        ? 200.0
+        : (_spots.map((s) => s.y).reduce((a, b) => a > b ? a : b) * 1.15)
+            .clamp(50.0, 600.0);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pomiar Dyno',
             style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent, elevation: 0,
+        actions: [
+          // Przycisk testowy upload — usuń po weryfikacji
+          IconButton(
+            icon: const Icon(Icons.cloud_upload_outlined),
+            tooltip: 'Test upload',
+            onPressed: () async {
+              final token = authService.token ?? '';
+              final measUp = authService.user?.measurementsUpload ?? false;
+              debugPrint('[TEST] token: ${token.substring(0, token.length.clamp(0,8))}...');
+              debugPrint('[TEST] measUpload: $measUp');
+              debugPrint('[TEST] isLoggedIn: ${authService.isLoggedIn}');
+              try {
+                final res = await http.post(
+                  Uri.parse('https://dynomic.pro/api/measurements/upload.php'),
+                  headers: {
+                    'Content-Type':  'application/json',
+                    'Authorization': 'Bearer $token',
+                  },
+                  body: jsonEncode({
+                    'max_hp': 95.0, 'max_nm': 255.0,
+                    'weight_kg': 1620.0, 'correction': 1.0,
+                    'measured_at': DateTime.now().toUtc().toIso8601String(),
+                  }),
+                ).timeout(const Duration(seconds: 15));
+                debugPrint('[TEST] HTTP ${res.statusCode}: ${res.body}');
+                if (mounted) {
+                  final body = res.body.length > 120
+                      ? res.body.substring(0, 120) + '...'
+                      : res.body;
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('HTTP ${res.statusCode}: $body'),
+                    duration: const Duration(seconds: 8),
+                    backgroundColor: res.statusCode == 201 ? Colors.green : Colors.red,
+                  ));
+                }
+              } catch (e) {
+                debugPrint('[TEST] Exception: $e');
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Błąd: $e'),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 6),
+                  ));
+                }
+              }
+            },
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -562,7 +625,7 @@ class _DynoScreenState extends State<DynoScreen> {
                   borderRadius: BorderRadius.circular(14)),
               child: LineChart(LineChartData(
                 minX: minX, maxX: maxX, minY: 0,
-                maxY: _maxHp > 100 ? _maxHp + 30 : 200,
+                maxY: maxY,
                 lineBarsData: [
                   LineChartBarData(
                     spots: _spots, isCurved: true,
