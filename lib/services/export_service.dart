@@ -114,7 +114,7 @@ class ExportService {
                 pw.TableRow(
                   decoration: const pw.BoxDecoration(color: PdfColors.grey200),
                   children: [
-                    cell('km/h', bold: true),
+                    cell('RPM', bold: true),
                     cell('Moc (KM)', bold: true),
                     cell('Moment (Nm)', bold: true),
                   ]),
@@ -179,25 +179,21 @@ class ExportService {
     double? tempC,
     double? pressureHpa,
   }) async {
-    // Parsuj punkty → RPM
+    // Parsuj punkty — parts[0] jest już w RPM (od v2 dyno_screen)
     final hpPts = <_Pt>[];
     final nmPts = <_Pt>[];
     for (final p in run.graphDataPoints) {
       final parts = p.split(';');
       if (parts.length < 2) continue;
-      final speed = double.tryParse(parts[0]);
-      final hp    = double.tryParse(parts[1]);
-      if (speed == null || hp == null) continue;
-      final rpm = speed * kFactor;
+      final rpm = double.tryParse(parts[0]);  // już RPM
+      final hp  = double.tryParse(parts[1]);
+      if (rpm == null || hp == null || rpm <= 0) continue;
       hpPts.add(_Pt(rpm, hp));
-      // Użyj zapisanego Nm (format v2) lub oblicz
-      if (rpm > 0) {
-        final savedNm = parts.length >= 3 ? double.tryParse(parts[2]) : null;
-        final nm = (savedNm != null && savedNm > 0)
-            ? savedNm
-            : (hp * 7023.5) / rpm;
-        nmPts.add(_Pt(rpm, nm));
-      }
+      final savedNm = parts.length >= 3 ? double.tryParse(parts[2]) : null;
+      final nm = (savedNm != null && savedNm > 0)
+          ? savedNm
+          : (hp * 7023.5) / rpm;
+      nmPts.add(_Pt(rpm, nm));
     }
     hpPts.sort((a, b) => a.x.compareTo(b.x));
     nmPts.sort((a, b) => a.x.compareTo(b.x));

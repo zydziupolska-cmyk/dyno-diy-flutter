@@ -12,7 +12,11 @@ class CalibrationScreen extends StatefulWidget {
 
 class _CalibrationScreenState extends State<CalibrationScreen> {
   StreamSubscription<double>? _speedSubscription;
-  double _currentSpeed = 0.0;
+  double _currentSpeed    = 0.0;
+  double _displaySpeed    = 0.0;   // wygładzona prędkość do wyświetlania
+  int    _zeroCount       = 0;     // ile kolejnych zer zliczono
+  static const _emaAlpha  = 0.15;  // współczynnik wygładzania (0=brak, 1=brak wygładzania)
+  static const _zeroDelay = 8;     // ile zer z rzędu zanim uznamy że naprawdę 0
   Map<String, double>? _savedCalibration;
   int? _activeCarId;
   bool _saving = false;
@@ -22,7 +26,27 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     super.initState();
     _loadCalibration();
     _speedSubscription = btService.speedStream.listen((speed) {
-      setState(() => _currentSpeed = speed);
+      setState(() {
+        if (speed <= 0) {
+          // Nie zeruj od razu — poczekaj na kilka kolejnych zer
+          _zeroCount++;
+          if (_zeroCount >= _zeroDelay) {
+            _currentSpeed = 0;
+            _displaySpeed = 0;
+          }
+          // Jeśli mniej zer — zachowaj ostatnią prędkość
+        } else {
+          _zeroCount = 0;
+          // EMA wygładzanie
+          if (_currentSpeed <= 0) {
+            _currentSpeed = speed;
+            _displaySpeed = speed;
+          } else {
+            _currentSpeed = _emaAlpha * speed + (1 - _emaAlpha) * _currentSpeed;
+            _displaySpeed = _currentSpeed;
+          }
+        }
+      });
     });
   }
 
@@ -59,7 +83,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Zapisano! ${_currentSpeed.toStringAsFixed(1)} km/h @ 3000 RPM  '
+          'Zapisano! ${_currentSpeed.toStringAsFixed(0)} km/h @ 3000 RPM  '
           '→ k=${cal!['kFactor']!.toStringAsFixed(2)} RPM/(km/h)',
         ),
         backgroundColor: Colors.blueAccent,
@@ -129,7 +153,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
 
               // Prędkość na żywo
               Text(
-                _currentSpeed.toStringAsFixed(1),
+                _displaySpeed.toStringAsFixed(0),
                 style: const TextStyle(fontSize: 90, fontWeight: FontWeight.bold),
               ),
               const Text('km/h @ 3000 RPM',

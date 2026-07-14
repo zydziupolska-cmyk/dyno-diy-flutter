@@ -1268,13 +1268,17 @@ class _ComparisonScreenState extends State<ComparisonScreen>
       );
     }
 
+    final allX = allSpots.expand((s) => s).map((s) => s.x).toList();
+    final minX = allX.isEmpty ? 1000.0 : (allX.reduce((a,b) => a<b?a:b) - 100).clamp(0.0, double.infinity);
+    final maxX = allX.isEmpty ? 6000.0 : allX.reduce((a,b) => a>b?a:b) + 200;
+
     return Container(
       padding: const EdgeInsets.only(right: 20, top: 20, bottom: 8),
       decoration: BoxDecoration(
           color: Colors.grey[950], borderRadius: BorderRadius.circular(16)),
       child: LineChart(
         LineChartData(
-          minX: 30, maxX: 200, minY: 0,
+          minX: minX, maxX: maxX, minY: 0,
           maxY: maxY + maxY * 0.1,
           lineBarsData: bars,
           titlesData: FlTitlesData(
