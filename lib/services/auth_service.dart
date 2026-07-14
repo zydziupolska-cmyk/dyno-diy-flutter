@@ -246,18 +246,14 @@ class AuthService extends ChangeNotifier {
 
   // ── Wylogowanie ──────────────────────────────────────────────
   Future<void> logout() async {
-    // Wyślij żądanie wylogowania do serwera (opcjonalne — może nie mieć sieci)
     if (_token != null) {
       try {
         await http.post(
           Uri.parse('$_baseUrl/api/auth/logout.php'),
           headers: {'Authorization': 'Bearer $_token'},
         ).timeout(const Duration(seconds: 5));
-      } catch (_) {
-        // Ignoruj błąd sieci — i tak czyścimy lokalnie
-      }
+      } catch (_) {}
     }
-
     _token   = null;
     _user    = null;
     _license = null;

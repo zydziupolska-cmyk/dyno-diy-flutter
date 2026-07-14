@@ -74,8 +74,12 @@ class _DynoScreenState extends State<DynoScreen> {
   BleAuthState _bleAuthState = BleAuthState.unknown;
   StreamSubscription<BleAuthState>? _authSub;
 
+  // ── Zakres wykresu z ustawień ─────────────────────────────────
+  double _chartMinX = 1000.0;  // domyślnie 1000 RPM
+  double _chartMaxX = 6000.0;  // domyślnie 6000 RPM
+
   double get _weight => widget.overrideWeight ?? widget.car.weightKg;
-  bool   get _useRpm => widget.kFactor != null && widget.kFactor! > 0;
+  // kFactor zawsze wymagany — kalibracja obowiązkowa przed pomiarem
 
   @override
   void initState() {
@@ -83,6 +87,13 @@ class _DynoScreenState extends State<DynoScreen> {
     _bleAuthState = btService.authState;
     _authSub = btService.licenseStatusStream.listen((state) {
       if (mounted) setState(() => _bleAuthState = state);
+    });
+    // Wczytaj zakres wykresu z ustawień
+    dbService.getWorkshopSettings().then((ws) {
+      if (mounted) setState(() {
+        _chartMinX = ws.chartMinX;
+        _chartMaxX = ws.chartMaxX;
+      });
     });
   }
 
@@ -239,13 +250,14 @@ class _DynoScreenState extends State<DynoScreen> {
         _lastSmoothedHp = hpLiveEma;
 
         if (hpLiveEma > 0 && hpLiveEma < 1000) {
-          final xVal  = _useRpm ? rawSpeed * widget.kFactor! : rawSpeed;
+          final kf   = widget.kFactor ?? 1.0;
+          final xVal = rawSpeed * kf;  // zawsze RPM
           final lastX = _spots.isNotEmpty ? _spots.last.x : 0.0;
-          final step  = _useRpm ? 30.0 : 0.5;
+          const step  = 30.0;  // krok w RPM
 
           double nmLive = 0;
-          if (_useRpm && rawSpeed * widget.kFactor! > 0) {
-            nmLive = (hpLiveEma * 7023.5) / (rawSpeed * widget.kFactor!);
+          if (xVal > 0) {
+            nmLive = (hpLiveEma * 7023.5) / xVal;
           }
 
           setState(() {
@@ -357,15 +369,13 @@ class _DynoScreenState extends State<DynoScreen> {
 
       final finalHp = (hpWheel + loss) * widget.weatherCf;
 
-      double finalNm = 0;
-      if (widget.kFactor != null && widget.kFactor! > 0) {
-        final rpm = speedKmh * widget.kFactor!;
-        if (rpm > 0) finalNm = (finalHp * 7023.5) / rpm;
-      }
+      final kf     = widget.kFactor ?? 1.0;
+      final rpm    = speedKmh * kf;
+      final finalNm = rpm > 0 ? (finalHp * 7023.5) / rpm : 0.0;
 
-      correctedSpots.add(FlSpot(speedKmh, finalHp));
+      correctedSpots.add(FlSpot(rpm, finalHp));  // oś X = RPM zawsze
       dataPoints.add(
-        '${speedKmh.toStringAsFixed(1)};'
+        '${rpm.toStringAsFixed(0)};'
         '${finalHp.toStringAsFixed(1)};'
         '${finalNm.toStringAsFixed(1)}');
       if (finalHp > maxHp) maxHp = finalHp;
@@ -475,74 +485,24 @@ class _DynoScreenState extends State<DynoScreen> {
       statusColor = Colors.redAccent;
     }
 
-    // Dynamiczny zakres osi X — zaczyna od pierwszego punktu danych
+    // Zakres osi X — RPM z ustawień lub dynamicznie z danych
     final double minX = _spots.isEmpty
-        ? (_useRpm ? 1000.0 : 20.0)
-        : (_spots.first.x - (_useRpm ? 100.0 : 2.0)).clamp(
-            _useRpm ? 800.0 : 0.0, double.infinity);
+        ? _chartMinX
+        : (_spots.first.x - 100.0).clamp(_chartMinX, double.infinity);
     final double maxX = _spots.isEmpty
-        ? (_useRpm ? 6500.0 : 200.0)
-        : (_spots.last.x + (_useRpm ? 200.0 : 5.0)).clamp(
-            0.0, _useRpm ? 8000.0 : 280.0);
-    // Dynamiczny maxY z danych + 15% margines
-    final double maxY = _spots.isEmpty
-        ? 200.0
-        : (_spots.map((s) => s.y).reduce((a, b) => a > b ? a : b) * 1.15)
-            .clamp(50.0, 600.0);
+        ? _chartMaxX
+        : (_spots.last.x + 200.0).clamp(0.0, _chartMaxX);
+
+    // Dynamiczne maxY — zaokrąglone do 50, min 2× peak
+    final double peakY = _spots.isEmpty ? 100.0
+        : _spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
+    final double maxY = ((peakY * 2.0) / 50).ceil() * 50.0;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pomiar Dyno',
             style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent, elevation: 0,
-        actions: [
-          // Przycisk testowy upload — usuń po weryfikacji
-          IconButton(
-            icon: const Icon(Icons.cloud_upload_outlined),
-            tooltip: 'Test upload',
-            onPressed: () async {
-              final token = authService.token ?? '';
-              final measUp = authService.user?.measurementsUpload ?? false;
-              debugPrint('[TEST] token: ${token.substring(0, token.length.clamp(0,8))}...');
-              debugPrint('[TEST] measUpload: $measUp');
-              debugPrint('[TEST] isLoggedIn: ${authService.isLoggedIn}');
-              try {
-                final res = await http.post(
-                  Uri.parse('https://dynomic.pro/api/measurements/upload.php'),
-                  headers: {
-                    'Content-Type':  'application/json',
-                    'Authorization': 'Bearer $token',
-                  },
-                  body: jsonEncode({
-                    'max_hp': 95.0, 'max_nm': 255.0,
-                    'weight_kg': 1620.0, 'correction': 1.0,
-                    'measured_at': DateTime.now().toUtc().toIso8601String(),
-                  }),
-                ).timeout(const Duration(seconds: 15));
-                debugPrint('[TEST] HTTP ${res.statusCode}: ${res.body}');
-                if (mounted) {
-                  final body = res.body.length > 120
-                      ? res.body.substring(0, 120) + '...'
-                      : res.body;
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text('HTTP ${res.statusCode}: $body'),
-                    duration: const Duration(seconds: 8),
-                    backgroundColor: res.statusCode == 201 ? Colors.green : Colors.red,
-                  ));
-                }
-              } catch (e) {
-                debugPrint('[TEST] Exception: $e');
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text('Błąd: $e'),
-                    backgroundColor: Colors.red,
-                    duration: const Duration(seconds: 6),
-                  ));
-                }
-              }
-            },
-          ),
-        ],
       ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -651,8 +611,8 @@ class _DynoScreenState extends State<DynoScreen> {
                     ),
                   ),
                   bottomTitles: AxisTitles(
-                    axisNameWidget: Text(_useRpm ? 'RPM' : 'km/h',
-                        style: const TextStyle(
+                    axisNameWidget: const Text('RPM',
+                        style: TextStyle(
                             color: Colors.grey, fontSize: 10)),
                     sideTitles: SideTitles(showTitles: true, reservedSize: 24,
                       getTitlesWidget: (v, _) => Text(v.toInt().toString(),

@@ -5,12 +5,20 @@ import '../models/workshop_settings.dart';
 
 class DatabaseService {
   Database? _db;
+  int _userId = 0; // 0 = niezalogowany
+
+  /// Ustaw aktywnego użytkownika — wywołaj po zalogowaniu/wylogowaniu
+  void setUserId(int userId) {
+    _userId = userId;
+  }
+
+  int get userId => _userId;
 
   Future<void> init() async {
     final path = join(await getDatabasesPath(), 'dyno_diy.db');
     _db = await openDatabase(
       path,
-      version: 4,
+      version: 6,
       onCreate: (db, version) async {
         await _createTables(db);
       },
@@ -39,10 +47,24 @@ class DatabaseService {
           ''');
         }
         if (oldVersion < 4) {
-          // Dodaj kolumnę synced — 0 = nie zsync, 1 = zsync z chmurą
-          // Wszystkie istniejące pomiary dostają 0 (niezsynkowane)
           await db.execute(
             'ALTER TABLE runs ADD COLUMN synced INTEGER NOT NULL DEFAULT 0'
+          );
+        }
+        if (oldVersion < 5) {
+          await db.execute(
+            'ALTER TABLE cars ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0'
+          );
+          await db.execute(
+            'ALTER TABLE workshop_settings ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0'
+          );
+        }
+        if (oldVersion < 6) {
+          await db.execute(
+            'ALTER TABLE workshop_settings ADD COLUMN chartMinX REAL NOT NULL DEFAULT 1000.0'
+          );
+          await db.execute(
+            'ALTER TABLE workshop_settings ADD COLUMN chartMaxX REAL NOT NULL DEFAULT 6000.0'
           );
         }
       },
@@ -53,6 +75,7 @@ class DatabaseService {
     await db.execute('''
       CREATE TABLE cars (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL DEFAULT 0,
         name TEXT NOT NULL,
         licensePlate TEXT,
         weightKg REAL NOT NULL,
@@ -87,11 +110,14 @@ class DatabaseService {
     await db.execute('''
       CREATE TABLE workshop_settings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL DEFAULT 0,
         name TEXT NOT NULL DEFAULT '',
         phone TEXT NOT NULL DEFAULT '',
         website TEXT NOT NULL DEFAULT '',
         customText TEXT NOT NULL DEFAULT '',
-        logoPath TEXT
+        logoPath TEXT,
+        chartMinX REAL NOT NULL DEFAULT 1000.0,
+        chartMaxX REAL NOT NULL DEFAULT 6000.0
       )
     ''');
   }
@@ -101,46 +127,57 @@ class DatabaseService {
     return _db!;
   }
 
-  // --- CARS ---
+  // ── CARS ──────────────────────────────────────────────────────
   Future<List<CarProfile>> getAllCars() async {
-    final maps = await db.query('cars');
+    final maps = await db.query(
+      'cars',
+      where: 'user_id = ?',
+      whereArgs: [_userId],
+    );
     return maps.map(CarProfile.fromMap).toList();
   }
 
   Future<int> saveCar(CarProfile car) async {
+    final map = car.toMap();
+    map['user_id'] = _userId;
     if (car.id == 0) {
-      return await db.insert('cars', car.toMap());
+      return db.insert('cars', map);
     } else {
-      await db.update('cars', car.toMap(), where: 'id = ?', whereArgs: [car.id]);
+      await db.update('cars', map,
+          where: 'id = ? AND user_id = ?',
+          whereArgs: [car.id, _userId]);
       return car.id;
     }
   }
 
   Future<void> deleteCar(int id) async {
-    await db.delete('cars', where: 'id = ?', whereArgs: [id]);
+    await db.delete('cars',
+        where: 'id = ? AND user_id = ?',
+        whereArgs: [id, _userId]);
     await db.delete('runs', where: 'carId = ?', whereArgs: [id]);
     await db.delete('calibrations', where: 'carId = ?', whereArgs: [id]);
   }
 
-  // --- RUNS ---
+  // ── RUNS ──────────────────────────────────────────────────────
   Future<void> saveRun(DynoRun run) async {
     await db.insert('runs', run.toMap());
   }
 
   Future<void> markRunSynced(int runId) async {
-    await db.update(
-      'runs',
-      {'synced': 1},
-      where: 'id = ?',
-      whereArgs: [runId],
-    );
+    await db.update('runs', {'synced': 1},
+        where: 'id = ?', whereArgs: [runId]);
   }
 
-  /// Zwraca wszystkie pomiary które nie zostały jeszcze zsynchronizowane
   Future<List<DynoRun>> getUnsyncedRuns() async {
+    // Pobierz niezsynkowane runy tylko dla samochodów aktualnego usera
+    final cars = await getAllCars();
+    if (cars.isEmpty) return [];
+    final carIds = cars.map((c) => c.id).toList();
+    final placeholders = carIds.map((_) => '?').join(',');
     final maps = await db.query(
       'runs',
-      where: 'synced = 0',
+      where: 'synced = 0 AND carId IN ($placeholders)',
+      whereArgs: carIds,
       orderBy: 'timestamp ASC',
     );
     return maps.map(DynoRun.fromMap).toList();
@@ -156,14 +193,14 @@ class DatabaseService {
     return maps.map(DynoRun.fromMap).toList();
   }
 
-  // --- CALIBRATIONS ---
+  // ── CALIBRATIONS ──────────────────────────────────────────────
   Future<void> saveCalibration(int carId, double speedAt3000rpm) async {
-    final kFactor = 3000.0 / speedAt3000rpm;
+    final kFactor = speedAt3000rpm > 0 ? 3000.0 / speedAt3000rpm : 0.0;
     await db.insert('calibrations', {
-      'carId': carId,
+      'carId':         carId,
       'speedAt3000rpm': speedAt3000rpm,
-      'kFactor': kFactor,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'kFactor':       kFactor,
+      'timestamp':     DateTime.now().millisecondsSinceEpoch,
     });
   }
 
@@ -178,28 +215,36 @@ class DatabaseService {
     if (maps.isEmpty) return null;
     return {
       'speedAt3000rpm': maps.first['speedAt3000rpm'] as double,
-      'kFactor': maps.first['kFactor'] as double,
+      'kFactor':        maps.first['kFactor'] as double,
     };
   }
 
-  // --- WORKSHOP SETTINGS ---
+  // ── WORKSHOP SETTINGS ─────────────────────────────────────────
   Future<WorkshopSettings> getWorkshopSettings() async {
-    final maps = await db.query('workshop_settings', limit: 1);
+    final maps = await db.query(
+      'workshop_settings',
+      where: 'user_id = ?',
+      whereArgs: [_userId],
+      limit: 1,
+    );
     if (maps.isEmpty) return WorkshopSettings();
     return WorkshopSettings.fromMap(maps.first);
   }
 
   Future<void> saveWorkshopSettings(WorkshopSettings settings) async {
-    final existing = await db.query('workshop_settings', limit: 1);
+    final existing = await db.query(
+      'workshop_settings',
+      where: 'user_id = ?',
+      whereArgs: [_userId],
+      limit: 1,
+    );
+    final map = settings.toMap();
+    map['user_id'] = _userId;
     if (existing.isEmpty) {
-      await db.insert('workshop_settings', settings.toMap());
+      await db.insert('workshop_settings', map);
     } else {
-      await db.update(
-        'workshop_settings',
-        settings.toMap(),
-        where: 'id = ?',
-        whereArgs: [existing.first['id']],
-      );
+      await db.update('workshop_settings', map,
+          where: 'user_id = ?', whereArgs: [_userId]);
     }
   }
 }

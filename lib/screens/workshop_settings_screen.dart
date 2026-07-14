@@ -17,6 +17,8 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
   late TextEditingController _phoneCtrl;
   late TextEditingController _websiteCtrl;
   late TextEditingController _customTextCtrl;
+  late TextEditingController _chartMinXCtrl;
+  late TextEditingController _chartMaxXCtrl;
   WorkshopSettings _settings = WorkshopSettings();
   bool _loading = true;
   bool _saving = false;
@@ -24,10 +26,12 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _nameCtrl = TextEditingController();
-    _phoneCtrl = TextEditingController();
-    _websiteCtrl = TextEditingController();
+    _nameCtrl       = TextEditingController();
+    _phoneCtrl      = TextEditingController();
+    _websiteCtrl    = TextEditingController();
     _customTextCtrl = TextEditingController();
+    _chartMinXCtrl  = TextEditingController(text: '1000');
+    _chartMaxXCtrl  = TextEditingController(text: '6000');
     _loadSettings();
   }
 
@@ -35,10 +39,12 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
     final s = await dbService.getWorkshopSettings();
     setState(() {
       _settings = s;
-      _nameCtrl.text = s.name;
-      _phoneCtrl.text = s.phone;
-      _websiteCtrl.text = s.website;
-      _customTextCtrl.text = s.customText;
+      _nameCtrl.text      = s.name;
+      _phoneCtrl.text     = s.phone;
+      _websiteCtrl.text   = s.website;
+      _customTextCtrl.text= s.customText;
+      _chartMinXCtrl.text = s.chartMinX.toStringAsFixed(0);
+      _chartMaxXCtrl.text = s.chartMaxX.toStringAsFixed(0);
       _loading = false;
     });
   }
@@ -49,6 +55,8 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
     _phoneCtrl.dispose();
     _websiteCtrl.dispose();
     _customTextCtrl.dispose();
+    _chartMinXCtrl.dispose();
+    _chartMaxXCtrl.dispose();
     super.dispose();
   }
 
@@ -87,12 +95,14 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
   Future<void> _save() async {
     setState(() => _saving = true);
     final updated = WorkshopSettings(
-      id: _settings.id,
-      name: _nameCtrl.text.trim(),
-      phone: _phoneCtrl.text.trim(),
-      website: _websiteCtrl.text.trim(),
+      id:         _settings.id,
+      name:       _nameCtrl.text.trim(),
+      phone:      _phoneCtrl.text.trim(),
+      website:    _websiteCtrl.text.trim(),
       customText: _customTextCtrl.text.trim(),
-      logoPath: _settings.logoPath,
+      logoPath:   _settings.logoPath,
+      chartMinX:  double.tryParse(_chartMinXCtrl.text) ?? 20.0,
+      chartMaxX:  double.tryParse(_chartMaxXCtrl.text) ?? 200.0,
     );
     await dbService.saveWorkshopSettings(updated);
     setState(() {
@@ -199,6 +209,42 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
                 prefixIcon: Icon(Icons.notes),
               ),
             ),
+
+            const SizedBox(height: 24),
+            _sectionLabel('Zakres wykresu (oś X)'),
+            const SizedBox(height: 4),
+            Text(
+              'Zakres osi X wykresu. Przy kalibracji RPM: podaj RPM (np. 1000–6000). Bez kalibracji: km/h (np. 20–200).',
+              style: TextStyle(color: Colors.grey[500], fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _chartMinXCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Od',
+                    hintText: '1000 (RPM) / 20 (km/h)',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.first_page),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _chartMaxXCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Do',
+                    hintText: '6000 (RPM) / 200 (km/h)',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.last_page),
+                  ),
+                ),
+              ),
+            ]),
 
             const SizedBox(height: 24),
             _sectionLabel('Logo warsztatu'),

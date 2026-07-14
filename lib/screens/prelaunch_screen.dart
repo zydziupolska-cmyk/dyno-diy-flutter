@@ -178,13 +178,13 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
                     ),
                     child: const Row(
                       children: [
-                        Icon(Icons.warning_amber, color: Colors.orangeAccent),
+                        Icon(Icons.warning_amber, color: Colors.redAccent),
                         SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'Brak kalibracji – moment obrotowy nie będzie obliczany.\n'
-                            'Wróć do zakładki Kalibracja i wykonaj pomiar.',
-                            style: TextStyle(color: Colors.orangeAccent),
+                            'Brak kalibracji — pomiar niemożliwy.\n'
+                            'Przejdź do zakładki Kalibracja i wykonaj pomiar prędkości przy 3000 RPM.',
+                            style: TextStyle(color: Colors.redAccent),
                           ),
                         ),
                       ],
@@ -236,20 +236,41 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
 
             const SizedBox(height: 30),
 
-            // Start
+            // Start — zablokowany bez kalibracji
             SizedBox(
               width: double.infinity,
               height: 65,
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.greenAccent,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  backgroundColor: hasCalibration
+                      ? Colors.greenAccent
+                      : Colors.grey[800],
+                  foregroundColor: hasCalibration
+                      ? Colors.black
+                      : Colors.grey[600],
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                 ),
-                onPressed: _startMeasurement,
-                icon: const Icon(Icons.play_arrow, size: 30),
-                label: const Text('START POMIARU',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                onPressed: hasCalibration
+                    ? _startMeasurement
+                    : () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Najpierw wykonaj kalibrację — '
+                              'przejdź do zakładki Kalibracja'),
+                            backgroundColor: Colors.redAccent,
+                            duration: Duration(seconds: 3),
+                          ),
+                        );
+                      },
+                icon: Icon(
+                  hasCalibration ? Icons.play_arrow : Icons.lock,
+                  size: 30),
+                label: Text(
+                  hasCalibration ? 'START POMIARU' : 'WYMAGANA KALIBRACJA',
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold)),
               ),
             ),
           ],

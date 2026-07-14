@@ -90,7 +90,14 @@ class AuthGate extends StatelessWidget {
     }
 
     if (!auth.isLoggedIn) {
+      // Wylogowany — resetuj userId w bazie
+      dbService.setUserId(0);
       return const AuthScreen();
+    }
+
+    // Zalogowany — ustaw userId żeby baza filtrowała po koncie
+    if (auth.user != null) {
+      dbService.setUserId(auth.user!.id);
     }
 
     // Zalogowany — pokaż główne menu

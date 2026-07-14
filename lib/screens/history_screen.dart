@@ -915,6 +915,20 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     final maxNm = nmSpots.isEmpty ? 0.0
         : nmSpots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
 
+    // Zakres osi X z danych — od min do max prędkości
+    final minX = spots.isEmpty ? 0.0
+        : (spots.map((s) => s.x).reduce((a, b) => a < b ? a : b) - 3.0)
+            .clamp(0.0, double.infinity);
+    final maxX = spots.isEmpty ? 200.0
+        : (spots.map((s) => s.x).reduce((a, b) => a > b ? a : b) + 5.0);
+
+    // Dynamiczne maxY — zaokrąglone w górę do najbliższych 50
+    // KM i Nm na tej samej osi — bierzemy max z obu
+    final maxVal = [maxHp, maxNm].reduce((a, b) => a > b ? a : b);
+    final maxY   = (maxVal * 1.25 / 50).ceil() * 50.0;
+    // Minimalne maxY = 2× peak żeby peak był w środku wykresu
+    final maxYFinal = maxY < maxHp * 1.8 ? (maxHp * 2 / 50).ceil() * 50.0 : maxY;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.car.name),
@@ -1006,11 +1020,10 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                             style: TextStyle(color: Colors.grey)))
                     : LineChart(
                         LineChartData(
-                          minX: 0,
-                          maxX: spots.isEmpty ? 200
-                              : (spots.map((s) => s.x).reduce((a,b) => a>b?a:b) + 10),
+                          minX: minX,
+                          maxX: maxX,
                           minY: 0,
-                          maxY: maxHp + 50,
+                          maxY: maxYFinal,
                           lineBarsData: [
                             // Nm (niebieska, pod HP)
                             if (nmSpots.isNotEmpty)
@@ -1058,7 +1071,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                               ),
                             ),
                             bottomTitles: AxisTitles(
-                              axisNameWidget: const Text('km/h',
+                              axisNameWidget: const Text('RPM',
                                   style: TextStyle(
                                       color: Colors.grey, fontSize: 11)),
                               sideTitles: SideTitles(
@@ -1071,9 +1084,48 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                               ),
                             ),
                           ),
-                          gridData:
-                              const FlGridData(show: true, drawVerticalLine: false),
+                          gridData: const FlGridData(
+                              show: true, drawVerticalLine: false),
                           borderData: FlBorderData(show: false),
+                          // Linie peak — pionowe przerywane na max KM i max Nm
+                          extraLinesData: ExtraLinesData(
+                            verticalLines: [
+                              if (spots.isNotEmpty) VerticalLine(
+                                x: spots.reduce((a,b) => a.y>b.y?a:b).x,
+                                color: Colors.greenAccent.withValues(alpha: 0.5),
+                                strokeWidth: 1,
+                                dashArray: [4, 4],
+                                label: VerticalLineLabel(
+                                  show: true,
+                                  alignment: Alignment.topRight,
+                                  style: const TextStyle(
+                                    color: Colors.greenAccent,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  labelResolver: (_) =>
+                                    '${maxHp.toStringAsFixed(1)} KM',
+                                ),
+                              ),
+                              if (nmSpots.isNotEmpty) VerticalLine(
+                                x: nmSpots.reduce((a,b) => a.y>b.y?a:b).x,
+                                color: Colors.blueAccent.withValues(alpha: 0.5),
+                                strokeWidth: 1,
+                                dashArray: [4, 4],
+                                label: VerticalLineLabel(
+                                  show: true,
+                                  alignment: Alignment.topLeft,
+                                  style: const TextStyle(
+                                    color: Colors.blueAccent,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  labelResolver: (_) =>
+                                    '${maxNm.toStringAsFixed(1)} Nm',
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
               ),
@@ -1241,7 +1293,7 @@ class _ComparisonScreenState extends State<ComparisonScreen>
               ),
             ),
             bottomTitles: AxisTitles(
-              axisNameWidget: const Text('km/h',
+              axisNameWidget: const Text('RPM',
                   style: TextStyle(color: Colors.grey, fontSize: 11)),
               sideTitles: SideTitles(
                 showTitles: true,
