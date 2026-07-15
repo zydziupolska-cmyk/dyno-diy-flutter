@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/garage_screen.dart';
 import 'screens/calibration_screen.dart';
 import 'screens/prelaunch_screen.dart';
@@ -10,6 +11,7 @@ import 'screens/add_car_screen.dart';
 import 'screens/workshop_settings_screen.dart';
 import 'screens/gps_diagnostics_screen.dart';
 import 'screens/ota_update_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'screens/auth_screen.dart';
 import 'services/database_service.dart';
 import 'services/bluetooth_service.dart';
@@ -106,15 +108,39 @@ class DynoApp extends StatelessWidget {
 }
 
 /// Bramka: pokazuje ekran logowania gdy user niezalogowany,
-/// główne menu gdy zalogowany i ma licencję.
-class AuthGate extends StatelessWidget {
+/// onboarding przy pierwszym uruchomieniu, główne menu gdy zalogowany.
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  bool _onboardingDone = true; // domyślnie true — czekamy na odczyt
+  bool _checkingPrefs  = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkOnboarding();
+  }
+
+  Future<void> _checkOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    final done  = prefs.getBool('onboarding_done') ?? false;
+    if (mounted) setState(() {
+      _onboardingDone = done;
+      _checkingPrefs  = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
 
-    if (!auth.initialized) {
+    // Ładowanie prefs lub auth
+    if (_checkingPrefs || !auth.initialized) {
       return const Scaffold(
         backgroundColor: Color(0xFF121212),
         body: Center(
@@ -123,18 +149,22 @@ class AuthGate extends StatelessWidget {
       );
     }
 
+    // Pierwsze uruchomienie — pokaż onboarding
+    if (!_onboardingDone) {
+      return OnboardingScreen(
+        onDone: () => setState(() => _onboardingDone = true),
+      );
+    }
+
     if (!auth.isLoggedIn) {
-      // Wylogowany — resetuj userId w bazie
       dbService.setUserId(0);
       return const AuthScreen();
     }
 
-    // Zalogowany — ustaw userId żeby baza filtrowała po koncie
     if (auth.user != null) {
       dbService.setUserId(auth.user!.id);
     }
 
-    // Zalogowany — pokaż główne menu
     return const MainMenuScreen();
   }
 }

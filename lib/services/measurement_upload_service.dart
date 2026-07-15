@@ -45,6 +45,8 @@ class MeasurementUploadService {
     required double weightKg,
     required double correction,
     required DateTime measuredAt,
+    String? vehicleName,
+    String? licencePlate,
     DynoRun? run,
     String? xmlData,
   }) async {
@@ -57,9 +59,9 @@ class MeasurementUploadService {
       return false;
     }
 
-    // Generuj XML jeśli mamy pełne dane pomiaru
     final xml = xmlData ?? (run != null ? _buildXml(run) : null);
     debugPrint('[UPLOAD] XML: ${xml != null ? "${xml.length} bajtów" : "brak"}');
+    debugPrint('[UPLOAD] Vehicle: $vehicleName ($licencePlate)');
 
     try {
       final res = await http.post(
@@ -74,6 +76,10 @@ class MeasurementUploadService {
           'max_nm':      maxNm,
           'weight_kg':   weightKg,
           'correction':  correction,
+          if (vehicleName  != null && vehicleName.isNotEmpty)
+            'vehicle_name':  vehicleName,
+          if (licencePlate != null && licencePlate.isNotEmpty)
+            'licence_plate': licencePlate,
           if (xml != null) 'xml_data': xml,
         }),
       ).timeout(const Duration(seconds: 20));
@@ -101,15 +107,22 @@ class MeasurementUploadService {
 
     debugPrint('[SYNC] Znaleziono ${unsynced.length} niezsynkowanych pomiarów');
 
+    // Pobierz wszystkie samochody raz
+    final cars = await db.getAllCars();
+    final carMap = { for (final c in cars) c.id: c };
+
     int ok = 0;
     for (final run in unsynced) {
+      final car = carMap[run.carId];
       final success = await upload(
-        maxHp:      run.maxEngineHp,
-        maxNm:      run.maxEngineTorque,
-        weightKg:   run.sessionWeightKg,
-        correction: run.correctionFactor,
-        measuredAt: run.timestamp,
-        run:        run,  // przekaż pełny run do generowania XML
+        maxHp:        run.maxEngineHp,
+        maxNm:        run.maxEngineTorque,
+        weightKg:     run.sessionWeightKg,
+        correction:   run.correctionFactor,
+        measuredAt:   run.timestamp,
+        vehicleName:  car?.name,
+        licencePlate: car?.licensePlate,
+        run:          run,
       );
       if (success && run.id > 0) {
         await db.markRunSynced(run.id);

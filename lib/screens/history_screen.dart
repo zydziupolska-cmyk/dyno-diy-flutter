@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -116,11 +118,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
     int ok = 0;
     for (final run in selected) {
       final success = await svc.upload(
-        maxHp:      run.maxEngineHp,
-        maxNm:      run.maxEngineTorque,
-        weightKg:   run.sessionWeightKg,
-        correction: run.correctionFactor,
-        measuredAt: run.timestamp,
+        maxHp:        run.maxEngineHp,
+        maxNm:        run.maxEngineTorque,
+        weightKg:     run.sessionWeightKg,
+        correction:   run.correctionFactor,
+        measuredAt:   run.timestamp,
+        vehicleName:  _selectedCar?.name,
+        licencePlate: _selectedCar?.licensePlate,
+        run:          run,
       );
       if (success) {
         await dbService.markRunSynced(run.id);
@@ -860,7 +865,41 @@ class RunDetailScreen extends StatefulWidget {
 }
 
 class _RunDetailScreenState extends State<RunDetailScreen> {
-  double _smoothing = 0.0; // 0 = brak filtra, 1 = max
+  double _smoothing = 0.0;
+  final GlobalKey _chartKey = GlobalKey(); // do screenshota wykresu
+
+  // ── Share wykresu jako PNG ────────────────────────────────────
+  Future<void> _shareChart() async {
+    try {
+      final boundary = _chartKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary == null) return;
+
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(
+          format: ui.ImageByteFormat.png);
+      if (byteData == null) return;
+
+      final dir    = await getTemporaryDirectory();
+      final run    = widget.run;
+      final fname  = 'dynomic_${run.maxEngineHp.toStringAsFixed(0)}hp'
+                     '_${run.maxEngineTorque.toStringAsFixed(0)}nm.png';
+      final file   = File('${dir.path}/$fname');
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'image/png')],
+        text: '🏁 ${run.maxEngineHp.toStringAsFixed(1)} HP  ·  '
+              '${run.maxEngineTorque.toStringAsFixed(1)} Nm\n'
+              'Measured with Dynomic GPS — dynomic.pro',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Share failed: $e')));
+      }
+    }
+  }
 
   // Zastosuj EMA do listy punktów
   List<FlSpot> _applySmoothing(List<FlSpot> raw) {
@@ -936,6 +975,11 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
         elevation: 0,
         actions: [
           IconButton(
+            icon: const Icon(Icons.share),
+            tooltip: 'Share chart',
+            onPressed: _shareChart,
+          ),
+          IconButton(
             icon: const Icon(Icons.print),
             tooltip: 'A4 Print (RPM)',
             onPressed: widget.onExportPrintPdf,
@@ -1007,9 +1051,11 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                 )),
             ]),
             const SizedBox(height: 4),
-            // Wykres
+            // Wykres — owinięty w RepaintBoundary do zrzutu ekranu
             Expanded(
-              child: Container(
+              child: RepaintBoundary(
+                key: _chartKey,
+                child: Container(
                 padding: const EdgeInsets.only(right: 20, top: 20),
                 decoration: BoxDecoration(
                     color: Colors.grey[950],
@@ -1129,6 +1175,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                         ),
                       ),
               ),
+                ), // RepaintBoundary
             ),
           ],
         ),

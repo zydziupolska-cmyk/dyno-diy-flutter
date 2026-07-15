@@ -396,12 +396,14 @@ class _DynoScreenState extends State<DynoScreen> {
     // Robimy w tle, nie blokuje UI, błąd jest tylko logowany
     final uploadSvc = MeasurementUploadService(authService);
     uploadSvc.upload(
-      maxHp:      maxHp,
-      maxNm:      maxNm,
-      weightKg:   _weight,
-      correction: widget.weatherCf,
-      measuredAt: run.timestamp,
-      run:        run,  // pełne dane do XML
+      maxHp:        maxHp,
+      maxNm:        maxNm,
+      weightKg:     _weight,
+      correction:   widget.weatherCf,
+      measuredAt:   run.timestamp,
+      vehicleName:  widget.car.name,
+      licencePlate: widget.car.licensePlate,
+      run:          run,
     ).then((ok) async {
       if (ok) {
         // Oznacz lokalny pomiar jako zsynchronizowany
