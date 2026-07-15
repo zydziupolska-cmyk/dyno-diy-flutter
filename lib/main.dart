@@ -363,13 +363,13 @@ StreamBuilder<bool>(
             children: [
               GestureDetector(
                 onTap: _handleModuleTap,
-                child: const Text('Moduł ESP32-M9N',
+                child: const Text('ESP32-M9N Module',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
               
               // --- DYNAMICZNA SEKCJA SATELITÓW ---
               if (!connected)
-                const Text('Brak połączenia', style: TextStyle(color: Colors.grey))
+                const Text('No connection', style: TextStyle(color: Colors.grey))
               else
                 StreamBuilder<int>(
                   stream: btService.satellitesStream,
@@ -377,7 +377,7 @@ StreamBuilder<bool>(
                   builder: (context, satSnapshot) {
                     int sats = satSnapshot.data ?? 0;
                     // Prosta logika: 0-3 brak fixa, 4-6 Fix 2D, >6 Fix 3D
-                    String fixType = "Szukam...";
+                    String fixType = "Searching...";
                     if (sats > 6) { fixType = "Fix 3D"; }
                     else if (sats > 0) { fixType = "Fix 2D"; }
 
@@ -398,11 +398,11 @@ StreamBuilder<bool>(
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
-              child: const Text('POŁĄCZ'),
+              child: const Text('Connect', style: TextStyle(fontWeight: FontWeight.bold)),
             )
           else
             Text(
-              'POŁĄCZONO',
+              'CONNECTED',
               style: TextStyle(color: statusColor, fontWeight: FontWeight.bold),
             ),
         ],
@@ -412,7 +412,7 @@ StreamBuilder<bool>(
 ),
       
             const SizedBox(height: 30),
-            const Text('Twoja Flota (Wybierz pojazd):', style: TextStyle(fontSize: 18, color: Colors.grey)),
+            const Text('Your Fleet (Choose a vehicle):', style: TextStyle(fontSize: 18, color: Colors.grey)),
             const SizedBox(height: 10),
 
             // LISTA POJAZDÓW Z BAZY DANYCH
@@ -510,7 +510,7 @@ StreamBuilder<bool>(
         },
         backgroundColor: Colors.redAccent,
         icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('DODAJ AUTO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        label: const Text('Add Vehicle', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -551,10 +551,10 @@ class _SessionNavigationState extends State<SessionNavigation> {
         type: BottomNavigationBarType.fixed,
         backgroundColor: Colors.black,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Ustawienia'),
-          BottomNavigationBarItem(icon: Icon(Icons.sync), label: 'Kalibracja'),
-          BottomNavigationBarItem(icon: Icon(Icons.speed), label: 'Pomiar'),
-          BottomNavigationBarItem(icon: Icon(Icons.analytics), label: 'Archiwum'),
+          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
+          BottomNavigationBarItem(icon: Icon(Icons.sync), label: 'Calibration'),
+          BottomNavigationBarItem(icon: Icon(Icons.speed), label: 'Measurement'),
+          BottomNavigationBarItem(icon: Icon(Icons.analytics), label: 'History'),
         ],
       ),
     );

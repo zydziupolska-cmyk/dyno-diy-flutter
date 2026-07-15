@@ -127,11 +127,11 @@ class _GpsDiagnosticsScreenState extends State<GpsDiagnosticsScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _StatBox('Prędkość', '${_currentSpeed.toStringAsFixed(1)} km/h',
+                    _StatBox('Speed', '${_currentSpeed.toStringAsFixed(1)} km/h',
                         Colors.white),
-                    _StatBox('Satelity', '$_currentSats',
+                    _StatBox('Satellites', '$_currentSats',
                         _currentSats >= 8 ? Colors.greenAccent : Colors.orangeAccent),
-                    _StatBox('Akceptacja', '${acceptRate.toStringAsFixed(0)}%',
+                    _StatBox('Acceptance', '${acceptRate.toStringAsFixed(0)}%',
                         acceptRate > 90 ? Colors.greenAccent : Colors.orangeAccent),
                   ],
                 ),
@@ -139,9 +139,9 @@ class _GpsDiagnosticsScreenState extends State<GpsDiagnosticsScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _StatBox('Łącznie', '$_totalSamples', Colors.grey),
+                    _StatBox('Total', '$_totalSamples', Colors.grey),
                     _StatBox('Rejected', '$_rejectedSamples', Colors.redAccent),
-                    _StatBox('Max skok', '${_maxJump.toStringAsFixed(1)} km/h',
+                    _StatBox('Max Jump', '${_maxJump.toStringAsFixed(1)} km/h',
                         _maxJump > 3 ? Colors.orangeAccent : Colors.greenAccent),
                   ],
                 ),

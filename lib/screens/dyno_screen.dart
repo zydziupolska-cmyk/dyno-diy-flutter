@@ -437,7 +437,7 @@ class _DynoScreenState extends State<DynoScreen> {
   @override
   Widget build(BuildContext context) {
     String statusText = btService.isConnected
-        ? 'GOTOWY DO STARTU' : 'CZEKAM NA ESP32...';
+        ? 'Ready to start' : 'Waiting for ESP32...';
     Color statusColor = btService.isConnected
         ? Colors.grey : Colors.orangeAccent;
 
@@ -445,43 +445,43 @@ class _DynoScreenState extends State<DynoScreen> {
     if (btService.isConnected) {
       switch (_bleAuthState) {
         case BleAuthState.verifying:
-          statusText  = '🔐 WERYFIKACJA LICENCJI...';
+          statusText  = '🔐 LICENSE VERIFICATION...';
           statusColor = Colors.orangeAccent;
           break;
         case BleAuthState.unauthorized:
-          statusText  = '⛔ NIEAUTORYZOWANE URZĄDZENIE';
+          statusText  = '⛔ UNAUTHORIZED DEVICE';
           statusColor = Colors.redAccent;
           break;
         case BleAuthState.noLicense:
-          statusText  = '⚠️ BRAK LICENCJI — ZALOGUJ SIĘ';
+          statusText  = '⚠️ NO LICENSE — PLEASE LOG IN';
           statusColor = Colors.redAccent;
           break;
         case BleAuthState.authorized:
-          statusText  = 'GOTOWY DO STARTU ✓';
+          statusText  = 'READY TO START ✓';
           statusColor = Colors.grey;
           break;
         case BleAuthState.notSupported:
-          statusText  = 'POŁĄCZONO (tryb legacy)';
+          statusText  = 'CONNECTED (legacy mode)';
           statusColor = Colors.grey;
           break;
         case BleAuthState.unknown:
-          statusText  = 'ŁĄCZENIE...';
+          statusText  = 'CONNECTING...';
           statusColor = Colors.orangeAccent;
           break;
       }
     }
 
     if (_countdown > 0) {
-      statusText  = 'START ZA $_countdown...';
+      statusText  = 'START IN $_countdown...';
       statusColor = Colors.yellowAccent;
     } else if (_state == MeasurementState.accelerating) {
-      statusText  = 'PRZYSPIESZANIE';
+      statusText  = 'ACCELERATING';
       statusColor = Colors.greenAccent;
     } else if (_state == MeasurementState.coasting) {
-      statusText  = 'WYBIEG: NIE HAMOWAĆ!';
+      statusText  = 'COASTING: DO NOT APPLY BRAKES!';
       statusColor = Colors.orangeAccent;
     } else if (_state == MeasurementState.finished) {
-      statusText  = 'ZAPISANO';
+      statusText  = 'SAVED';
       statusColor = Colors.redAccent;
     }
 

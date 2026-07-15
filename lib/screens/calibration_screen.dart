@@ -194,7 +194,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Przykład: 100 km/h = ${(100 * _savedCalibration!['kFactor']!).toStringAsFixed(0)} RPM',
+                        'Example: 100 km/h = ${(100 * _savedCalibration!['kFactor']!).toStringAsFixed(0)} RPM',
                         style: const TextStyle(color: Colors.grey, fontSize: 12),
                       ),
                     ],
@@ -220,7 +220,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                       : const Icon(Icons.save, color: Colors.white),
                   label: Text(
                     _currentSpeed < 5
-                        ? 'Jedź i utrzymaj 3000 RPM'
+                        ? 'Drive and maintain 3000 RPM'
                         : 'SAVE CALIBRATION',
                     style: const TextStyle(
                         fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),

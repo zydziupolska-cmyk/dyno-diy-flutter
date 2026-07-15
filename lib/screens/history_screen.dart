@@ -1443,7 +1443,7 @@ class _ComparisonScreenState extends State<ComparisonScreen>
                                 style: TextStyle(color: Colors.grey),
                               ),
                               Text(
-                                'Wykonaj nowy pomiar z kalibracja.',
+                                'Perform a new measurement with calibration.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(color: Colors.grey, fontSize: 12),
                               ),

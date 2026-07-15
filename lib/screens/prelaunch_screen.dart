@@ -142,7 +142,7 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
                 labelText: 'Car + Driver + Fuel',
                 border: OutlineInputBorder(),
                 suffixText: 'kg',
-                helperText: 'Błąd 50 kg = ~3% błąd mocy',
+                helperText: ' Error of 50 kg = ~3% error in power',
               ),
             ),
 
@@ -227,7 +227,7 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Współczynnik korekcji DIN: ×${cf.toStringAsFixed(4)}',
+              'DIN correction factor: ×${cf.toStringAsFixed(4)}',
               style: TextStyle(
                 color: (cf - 1.0).abs() < 0.05 ? Colors.greenAccent : Colors.orangeAccent,
                 fontSize: 13,

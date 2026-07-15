@@ -160,8 +160,8 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
                 border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
               ),
               child: const Text(
-                'Te dane pojawią się na wydruku PDF w formacie do druku. '
-                'Logo będzie też widoczne jako półprzezroczysty watermark na środku wykresu.',
+                'This data will appear on the PDF printout in a print-ready format. '
+                'The logo will also be visible as a semi-transparent watermark in the center of the chart.',
                 style: TextStyle(fontSize: 13, color: Colors.blueAccent),
               ),
             ),
@@ -211,10 +211,10 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
             ),
 
             const SizedBox(height: 24),
-            _sectionLabel('Zakres wykresu (oś X)'),
+            _sectionLabel('Axis range (Axis X)'),
             const SizedBox(height: 4),
             Text(
-              'Zakres osi X wykresu. Przy kalibracji RPM: podaj RPM (np. 1000–6000). Bez kalibracji: km/h (np. 20–200).',
+              'Range of the X-axis on the chart. For RPM calibration: enter RPM (e.g., 1000–6000). For speed calibration: km/h (e.g., 20–200).',
               style: TextStyle(color: Colors.grey[500], fontSize: 12),
             ),
             const SizedBox(height: 10),
@@ -247,7 +247,7 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
             ]),
 
             const SizedBox(height: 24),
-            _sectionLabel('Logo warsztatu'),
+            _sectionLabel('Workshop logo'),
             const SizedBox(height: 10),
 
             // Logo preview
@@ -278,7 +278,7 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
                               style: TextStyle(color: Colors.greenAccent)),
                           const SizedBox(height: 4),
                           const Text(
-                            'Będzie widoczne jako watermark na wykresie i w stopce PDF',
+                            'Will be visible as a watermark on the chart and in the PDF footer',
                             style:
                                 TextStyle(fontSize: 12, color: Colors.grey),
                           ),
@@ -312,7 +312,7 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
                 onPressed: _pickLogo,
                 icon: const Icon(Icons.upload_file, color: Colors.blueAccent),
                 label: Text(
-                  hasLogo ? 'Zmień logo' : 'Wgraj logo (PNG/JPG)',
+                  hasLogo ? 'Change logo' : 'Upload logo (PNG/JPG)',
                   style: const TextStyle(color: Colors.blueAccent, fontSize: 16),
                 ),
               ),
@@ -320,14 +320,14 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
 
             const SizedBox(height: 8),
             const Text(
-              'Zalecane: PNG z przezroczystym tłem, min. 300×100 px',
+              'Recommended: PNG with transparent background, minimum 300×100 px',
               style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
 
             const SizedBox(height: 30),
 
             // Podgląd stopki
-            _sectionLabel('Podgląd stopki PDF'),
+            _sectionLabel('PDF Footer Preview'),
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.all(14),
@@ -383,7 +383,7 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
                   ),
                   Text(
                     _customTextCtrl.text.isEmpty
-                        ? 'Tekst własny'
+                        ? 'Custom Text'
                         : _customTextCtrl.text,
                     style:
                         const TextStyle(fontSize: 11, color: Colors.grey),

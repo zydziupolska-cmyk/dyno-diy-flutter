@@ -369,7 +369,7 @@ class _OtaUpdateScreenState extends State<OtaUpdateScreen> {
             ],
 
             // ── Instrukcja ręczna (zwijana) ──────────────────────
-            ExpansionTile(
+           /* ExpansionTile(
               tilePadding: EdgeInsets.zero,
               title: const Text('Manual update from file',
                   style: TextStyle(fontSize: 13, color: Colors.grey)),
@@ -420,7 +420,7 @@ class _OtaUpdateScreenState extends State<OtaUpdateScreen> {
                 ),
                 const SizedBox(height: 8),
               ],
-            ),
+            ),*/
 
             const SizedBox(height: 8),
 

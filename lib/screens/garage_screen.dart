@@ -147,10 +147,10 @@ class _GarageScreenState extends State<GarageScreen> {
                     SizedBox(width: 15),
                     Expanded(
                       child: Text(
-                        'Dokładna waga to klucz do poprawnego pomiaru '
-                        '(błąd 50kg to ok. 3-5% przekłamania wyniku). '
+                        'Precise weight is crucial for an accurate measurement '
+                        '(error of 50kg is acceptable. 3-5% deviation in results). '
                         'Temperature and pressure are used for DIN correction '
-                        'wyników wg normy DIN 70020.',
+                        'of results according to DIN 70020 standard.',
                         style: TextStyle(height: 1.4),
                       ),
                     ),
