@@ -61,6 +61,18 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   build_runner: any
+  flutter_launcher_icons: ^0.13.1
+  
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png" # Dla iOS i starszych Androidów
+  
+  # Zadowalamy nowszego Androida (generuje folder v26):
+  adaptive_icon_background: "#000000" # Idealnie czarne tło
+  adaptive_icon_foreground: "assets/icon/app_icon.png" # Twoja grafika
+  
+  
 
 
   # The "flutter_lints" package below contains a set of recommended lints to
