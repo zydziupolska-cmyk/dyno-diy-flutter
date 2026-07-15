@@ -31,11 +31,11 @@ class _AddCarScreenState extends State<AddCarScreen> {
               // POLE: NAZWA
               TextFormField(
                 decoration: const InputDecoration(
-                  labelText: 'Marka i model (np. BMW E46 M3)',
+                  labelText: 'Make and model (e.g., BMW E46)',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.directions_car),
                 ),
-                validator: (val) => val == null || val.isEmpty ? 'To pole jest wymagane' : null,
+                validator: (val) => val == null || val.isEmpty ? 'This field is required' : null,
                 onSaved: (val) => _name = val!,
               ),
               const SizedBox(height: 16),
@@ -43,7 +43,7 @@ class _AddCarScreenState extends State<AddCarScreen> {
               // POLE: REJESTRACJA
               TextFormField(
                 decoration: const InputDecoration(
-                  labelText: 'Numer rejestracyjny (opcjonalnie)',
+                  labelText: 'Licence plate (optional)',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.badge),
                 ),
@@ -55,7 +55,7 @@ class _AddCarScreenState extends State<AddCarScreen> {
               // POLE: SKRZYNIA BIEGÓW I NAPĘD
               DropdownButtonFormField<TransmissionType>(
                 decoration: const InputDecoration(
-                  labelText: 'Rodzaj napędu / Skrzynia',
+                  labelText: 'Transmission type',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.settings),
                 ),
