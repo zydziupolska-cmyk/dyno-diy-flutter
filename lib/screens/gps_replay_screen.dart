@@ -75,13 +75,13 @@ class _GpsReplayScreenState extends State<GpsReplayScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Replay GPS'),
+        title: const Text('GPS Replay'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.download),
-            tooltip: 'Eksportuj CSV',
+            tooltip: 'Export CSV',
             onPressed: _exportCsv,
           ),
         ],
@@ -105,16 +105,16 @@ class _GpsReplayScreenState extends State<GpsReplayScreen> {
                       acceptRate > 90
                           ? Colors.greenAccent
                           : Colors.orangeAccent),
-                  _Stat('Odrzucone', '$rejected', Colors.redAccent),
+                  _Stat('Rejected', '$rejected', Colors.redAccent),
                 ],
               ),
               const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _Stat('Przyspieszanie', '$accPhase', Colors.greenAccent),
-                  _Stat('Wybieg', '$coastPhase', Colors.orangeAccent),
-                  _Stat('Zaakceptowane', '$accepted', Colors.greenAccent),
+                  _Stat('Acceleration', '$accPhase', Colors.greenAccent),
+                  _Stat('Coast-down', '$coastPhase', Colors.orangeAccent),
+                  _Stat('Accepted', '$accepted', Colors.greenAccent),
                 ],
               ),
             ]),
@@ -148,17 +148,17 @@ class _GpsReplayScreenState extends State<GpsReplayScreen> {
             child: Row(children: [
               _LegendDot(Colors.greenAccent),
               const SizedBox(width: 4),
-              const Text('Przyspieszanie',
+              const Text('Acceleration',
                   style: TextStyle(color: Colors.grey, fontSize: 11)),
               const SizedBox(width: 12),
               _LegendDot(Colors.orangeAccent),
               const SizedBox(width: 4),
-              const Text('Wybieg',
+              const Text('Coast-down',
                   style: TextStyle(color: Colors.grey, fontSize: 11)),
               const SizedBox(width: 12),
               _LegendDot(Colors.redAccent),
               const SizedBox(width: 4),
-              const Text('Odrzucone',
+              const Text('Rejected',
                   style: TextStyle(color: Colors.grey, fontSize: 11)),
             ]),
           ),
@@ -168,7 +168,7 @@ class _GpsReplayScreenState extends State<GpsReplayScreen> {
           Expanded(
             child: _filtered.isEmpty
                 ? const Center(
-                    child: Text('Brak próbek',
+                    child: Text('No samples',
                         style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 12),

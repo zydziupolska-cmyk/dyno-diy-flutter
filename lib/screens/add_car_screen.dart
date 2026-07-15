@@ -19,7 +19,7 @@ class _AddCarScreenState extends State<AddCarScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dodaj nowy pojazd', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Add new vehicle', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
       ),
       body: Padding(
@@ -61,10 +61,10 @@ class _AddCarScreenState extends State<AddCarScreen> {
                 ),
                 initialValue: _transmission, 
                 items: const [
-                  DropdownMenuItem(value: TransmissionType.manual, child: Text('Manualna (RWD/FWD)')),
-                  DropdownMenuItem(value: TransmissionType.automatic, child: Text('Automatyczna (RWD/FWD)')),
-                  DropdownMenuItem(value: TransmissionType.awdManual, child: Text('Manualna (AWD/4x4)')),
-                  DropdownMenuItem(value: TransmissionType.awdAutomatic, child: Text('Automatyczna (AWD/4x4)')),
+                  DropdownMenuItem(value: TransmissionType.manual, child: Text('Manual (RWD/FWD)')),
+                  DropdownMenuItem(value: TransmissionType.automatic, child: Text('Automatic (RWD/FWD)')),
+                  DropdownMenuItem(value: TransmissionType.awdManual, child: Text('Manual (AWD/4WD)')),
+                  DropdownMenuItem(value: TransmissionType.awdAutomatic, child: Text('Automatic (AWD/4WD)')),
                 ],
                 onChanged: (val) {
                   setState(() {
@@ -104,7 +104,7 @@ class _AddCarScreenState extends State<AddCarScreen> {
                     Navigator.pop(context, newCar);
                   }
                 },
-                child: const Text('DODAJ DO GARAŻU', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                child: const Text('ADD TO GARAGE', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
               )
             ],
           ),

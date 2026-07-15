@@ -107,7 +107,7 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dane sesji'),
+        title: const Text('Session data'),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -117,14 +117,14 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Auto
-            _SectionHeader(title: 'Pojazd', icon: Icons.directions_car),
+            _SectionHeader(title: 'Vehicle', icon: Icons.directions_car),
             const SizedBox(height: 8),
             _InfoCard(
               children: [
-                _InfoRow(label: 'Nazwa', value: widget.car.name),
+                _InfoRow(label: 'Name', value: widget.car.name),
                 if (widget.car.licensePlate != null)
-                  _InfoRow(label: 'Rejestracja', value: widget.car.licensePlate!),
-                _InfoRow(label: 'Typ napędu',
+                  _InfoRow(label: 'Licence plate', value: widget.car.licensePlate!),
+                _InfoRow(label: 'Drivetrain',
                     value: widget.car.transmission.name.toUpperCase()),
               ],
             ),
@@ -132,14 +132,14 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
             const SizedBox(height: 20),
 
             // Waga sesji
-            _SectionHeader(title: 'Waga sesji', icon: Icons.monitor_weight),
+            _SectionHeader(title: 'Session weight', icon: Icons.monitor_weight),
             const SizedBox(height: 8),
             TextField(
               controller: _weightController,
               keyboardType: TextInputType.number,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
-                labelText: 'Auto + Kierowca + Paliwo',
+                labelText: 'Car + Driver + Fuel',
                 border: OutlineInputBorder(),
                 suffixText: 'kg',
                 helperText: 'Błąd 50 kg = ~3% błąd mocy',
@@ -149,14 +149,14 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
             const SizedBox(height: 20),
 
             // Kalibracja k-factor
-            _SectionHeader(title: 'Kalibracja K-Factor', icon: Icons.tune),
+            _SectionHeader(title: 'K-Factor Calibration', icon: Icons.tune),
             const SizedBox(height: 8),
             hasCalibration
                 ? _InfoCard(
                     color: Colors.greenAccent,
                     children: [
                       _InfoRow(
-                          label: 'Prędkość @ 3000 RPM',
+                          label: 'Speed @ 3 000 RPM',
                           value:
                               '${_calibration!['speedAt3000rpm']!.toStringAsFixed(1)} km/h'),
                       _InfoRow(
@@ -164,7 +164,7 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
                           value:
                               '${_calibration!['kFactor']!.toStringAsFixed(2)} RPM/(km/h)'),
                       _InfoRow(
-                          label: 'Przykład',
+                          label: 'Example',
                           value:
                               '100 km/h = ${(100 * _calibration!['kFactor']!).toStringAsFixed(0)} RPM'),
                     ],
@@ -182,8 +182,8 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
                         SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'Brak kalibracji — pomiar niemożliwy.\n'
-                            'Przejdź do zakładki Kalibracja i wykonaj pomiar prędkości przy 3000 RPM.',
+                            'Calibration required — measurement not possible.\n'
+                            'Go to the Calibration tab and measure your speed at 3 000 RPM.',
                             style: TextStyle(color: Colors.redAccent),
                           ),
                         ),
@@ -194,7 +194,7 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
             const SizedBox(height: 20),
 
             // Warunki atmosferyczne
-            _SectionHeader(title: 'Warunki (korekcja DIN 70020)', icon: Icons.thermostat),
+            _SectionHeader(title: 'Conditions (DIN 70020 correction)', icon: Icons.thermostat),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -204,7 +204,7 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
                     keyboardType: TextInputType.number,
                     onChanged: (_) => setState(() {}),
                     decoration: const InputDecoration(
-                      labelText: 'Temperatura',
+                      labelText: 'Temperature',
                       border: OutlineInputBorder(),
                       suffixText: '°C',
                     ),
@@ -217,7 +217,7 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
                     keyboardType: TextInputType.number,
                     onChanged: (_) => setState(() {}),
                     decoration: const InputDecoration(
-                      labelText: 'Ciśnienie',
+                      labelText: 'Pressure',
                       border: OutlineInputBorder(),
                       suffixText: 'hPa',
                     ),
@@ -257,8 +257,8 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text(
-                              'Najpierw wykonaj kalibrację — '
-                              'przejdź do zakładki Kalibracja'),
+                              'Please calibrate first — '
+                              'go to the Calibration tab'),
                             backgroundColor: Colors.redAccent,
                             duration: Duration(seconds: 3),
                           ),
@@ -268,7 +268,7 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
                   hasCalibration ? Icons.play_arrow : Icons.lock,
                   size: 30),
                 label: Text(
-                  hasCalibration ? 'START POMIARU' : 'WYMAGANA KALIBRACJA',
+                  hasCalibration ? 'START RUN' : 'CALIBRATION REQUIRED',
                   style: const TextStyle(
                       fontSize: 20, fontWeight: FontWeight.bold)),
               ),

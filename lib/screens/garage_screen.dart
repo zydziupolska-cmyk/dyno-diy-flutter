@@ -77,7 +77,7 @@ class _GarageScreenState extends State<GarageScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Ustawienia: ${widget.car.name}'),
+        title: Text('Settings: ${widget.car.name}'),
         backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
       ),
       body: SingleChildScrollView(
@@ -85,7 +85,7 @@ class _GarageScreenState extends State<GarageScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Parametry pojazdu:',
+            const Text('Vehicle parameters:',
                 style: TextStyle(fontSize: 18, color: Colors.redAccent,
                     fontWeight: FontWeight.bold)),
             const SizedBox(height: 15),
@@ -93,7 +93,7 @@ class _GarageScreenState extends State<GarageScreen> {
               controller: _weightController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                labelText: 'Waga (kg) = Auto + Kierowca + Paliwo',
+                labelText: 'Weight (kg) = Car + Driver + Fuel',
                 border: OutlineInputBorder(),
                 suffixText: 'kg',
                 prefixIcon: Icon(Icons.monitor_weight),
@@ -101,7 +101,7 @@ class _GarageScreenState extends State<GarageScreen> {
               onChanged: _saveWeightToDb,
             ),
             const SizedBox(height: 30),
-            const Text('Warunki do korekcji (Norma DIN):',
+            const Text('Correction conditions (DIN standard):',
                 style: TextStyle(fontSize: 18, color: Colors.redAccent,
                     fontWeight: FontWeight.bold)),
             const SizedBox(height: 15),
@@ -112,7 +112,7 @@ class _GarageScreenState extends State<GarageScreen> {
                     controller: _tempController,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: 'Temperatura',
+                      labelText: 'Temperature',
                       border: OutlineInputBorder(),
                       suffixText: '°C',
                       prefixIcon: Icon(Icons.thermostat),
@@ -125,7 +125,7 @@ class _GarageScreenState extends State<GarageScreen> {
                     controller: _pressureController,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: 'Ciśnienie',
+                      labelText: 'Pressure',
                       border: OutlineInputBorder(),
                       suffixText: 'hPa',
                       prefixIcon: Icon(Icons.speed),
@@ -149,7 +149,7 @@ class _GarageScreenState extends State<GarageScreen> {
                       child: Text(
                         'Dokładna waga to klucz do poprawnego pomiaru '
                         '(błąd 50kg to ok. 3-5% przekłamania wyniku). '
-                        'Temperatura i ciśnienie posłużą do korekcji '
+                        'Temperature and pressure are used for DIN correction '
                         'wyników wg normy DIN 70020.',
                         style: TextStyle(height: 1.4),
                       ),

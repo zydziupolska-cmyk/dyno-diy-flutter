@@ -112,7 +112,7 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Ustawienia warsztatu zapisane'),
+        content: Text('Workshop settings saved'),
         backgroundColor: Colors.greenAccent,
       ),
     );
@@ -129,7 +129,7 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ustawienia warsztatu'),
+        title: const Text('Workshop settings'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
@@ -140,7 +140,7 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('ZAPISZ',
+                : const Text('SAVE',
                     style: TextStyle(
                         color: Colors.greenAccent, fontWeight: FontWeight.bold)),
           ),
@@ -167,13 +167,13 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
             ),
 
             const SizedBox(height: 24),
-            _sectionLabel('Dane warsztatu'),
+            _sectionLabel('Workshop details'),
             const SizedBox(height: 10),
 
             TextField(
               controller: _nameCtrl,
               decoration: const InputDecoration(
-                labelText: 'Nazwa warsztatu',
+                labelText: 'Workshop name',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.business),
               ),
@@ -183,7 +183,7 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
               controller: _phoneCtrl,
               keyboardType: TextInputType.phone,
               decoration: const InputDecoration(
-                labelText: 'Telefon',
+                labelText: 'Phone',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.phone),
               ),
@@ -193,7 +193,7 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
               controller: _websiteCtrl,
               keyboardType: TextInputType.url,
               decoration: const InputDecoration(
-                labelText: 'Strona www',
+                labelText: 'Website',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.language),
               ),
@@ -203,8 +203,8 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
               controller: _customTextCtrl,
               maxLines: 2,
               decoration: const InputDecoration(
-                labelText: 'Własny tekst na wydruku',
-                hintText: 'np. "Pomiar GPS · NEO-M9N 10Hz"',
+                labelText: 'Custom text on printout',
+                hintText: 'e.g. "GPS measurement · NEO-M9N 10 Hz"',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.notes),
               ),
@@ -274,7 +274,7 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Logo wgrane',
+                          const Text('Logo uploaded',
                               style: TextStyle(color: Colors.greenAccent)),
                           const SizedBox(height: 4),
                           const Text(
@@ -287,7 +287,7 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
                             onPressed: _removeLogo,
                             icon: const Icon(Icons.delete_outline,
                                 color: Colors.redAccent, size: 16),
-                            label: const Text('Usuń logo',
+                            label: const Text('Remove logo',
                                 style: TextStyle(
                                     color: Colors.redAccent, fontSize: 13)),
                           ),
@@ -361,7 +361,7 @@ class _WorkshopSettingsScreenState extends State<WorkshopSettingsScreen> {
                       children: [
                         Text(
                           _nameCtrl.text.isEmpty
-                              ? 'Nazwa warsztatu'
+                              ? 'Workshop name'
                               : _nameCtrl.text,
                           style: const TextStyle(
                               fontSize: 13,

@@ -130,7 +130,7 @@ class _DynoScreenState extends State<DynoScreen> {
   void _startMeasurement() {
     if (!btService.isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ESP32 nie jest połączony!')));
+        const SnackBar(content: Text('ESP32 not connected')));
       return;
     }
 
@@ -141,7 +141,7 @@ class _DynoScreenState extends State<DynoScreen> {
         auth == BleAuthState.noLicense) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(auth == BleAuthState.noLicense
-          ? 'Brak licencji. Zaloguj się w ustawieniach aplikacji.'
+          ? 'No licence. Please log in.'
           : 'Nieautoryzowane urządzenie. Sprawdź czy to Twój sprzęt.'),
         backgroundColor: Colors.redAccent,
       ));
@@ -150,7 +150,7 @@ class _DynoScreenState extends State<DynoScreen> {
 
     if (auth == BleAuthState.verifying) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Trwa weryfikacja licencji, zaczekaj...')));
+        const SnackBar(content: Text('Verifying licence, please wait…')));
       return;
     }
     setState(() {
@@ -500,7 +500,7 @@ class _DynoScreenState extends State<DynoScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pomiar Dyno',
+        title: const Text('Dyno Run',
             style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent, elevation: 0,
       ),
@@ -545,7 +545,7 @@ class _DynoScreenState extends State<DynoScreen> {
                 style: TextStyle(fontSize: 38, fontWeight: FontWeight.bold,
                     color: statusColor),
               ),
-              Text(_state == MeasurementState.finished ? 'MAX KM' : 'KM',
+              Text(_state == MeasurementState.finished ? 'MAX HP' : 'KM',
                   style: const TextStyle(color: Colors.grey, fontSize: 12)),
             ]),
             if (widget.kFactor != null)
@@ -568,7 +568,7 @@ class _DynoScreenState extends State<DynoScreen> {
                 onPressed: _manualCoast,
                 icon: const Icon(Icons.arrow_downward,
                     color: Colors.orangeAccent, size: 16),
-                label: const Text('ZDJĄŁEM GAZ → START WYBIEGU',
+                label: const Text('THROTTLE OFF → COAST DOWN',
                     style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
                 style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.orangeAccent),
@@ -639,7 +639,7 @@ class _DynoScreenState extends State<DynoScreen> {
                         borderRadius: BorderRadius.circular(12)),
                   ),
                   icon: const Icon(Icons.bar_chart, color: Colors.white),
-                  label: const Text('ZOBACZ WYKRES',
+                  label: const Text('VIEW CHART',
                       style: TextStyle(color: Colors.white,
                           fontWeight: FontWeight.bold, fontSize: 15)),
                   onPressed: () => Navigator.push(context,
@@ -657,7 +657,7 @@ class _DynoScreenState extends State<DynoScreen> {
                         if (widget.kFactor == null) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text(
-                              'Brak kalibracji – wydruk A4 niedostępny')));
+                              'No calibration — A4 export unavailable')));
                           return;
                         }
                         final svc     = ExportService();

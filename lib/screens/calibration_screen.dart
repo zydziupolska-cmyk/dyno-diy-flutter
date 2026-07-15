@@ -105,7 +105,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kalibracja K-Factor'),
+        title: const Text('K-Factor Calibration'),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -125,14 +125,14 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                 child: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Jak wykonać kalibrację:',
+                    Text('How to calibrate:',
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     SizedBox(height: 8),
-                    Text('1. Wjedź na drogę i wbij bieg bezpośredni (3. lub 4.)'),
-                    Text('2. Utrzymaj dokładnie 3000 RPM'),
-                    Text('3. Gdy prędkość się stabilizuje — kliknij ZAPISZ'),
+                    Text('1. Drive on a road and select a direct gear (3rd or 4th)'),
+                    Text('2. Hold exactly 3 000 RPM steady'),
+                    Text('3. When speed stabilises — tap SAVE'),
                     SizedBox(height: 8),
-                    Text('Ten współczynnik służy do obliczania RPM i momentu obrotowego podczas pomiaru.',
+                    Text('This coefficient is used to calculate RPM and torque during a run.',
                         style: TextStyle(color: Colors.grey, fontSize: 12)),
                   ],
                 ),
@@ -142,7 +142,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
 
               // Status GPS
               Text(
-                connected ? 'GPS aktywny' : 'Brak połączenia z ESP32',
+                connected ? 'GPS active' : 'ESP32 not connected',
                 style: TextStyle(
                   color: connected ? Colors.greenAccent : Colors.redAccent,
                   fontSize: 14,
@@ -183,7 +183,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Aktualna kalibracja:',
+                      const Text('Current calibration:',
                           style: TextStyle(color: Colors.grey, fontSize: 12)),
                       const SizedBox(height: 4),
                       Text(
@@ -221,7 +221,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                   label: Text(
                     _currentSpeed < 5
                         ? 'Jedź i utrzymaj 3000 RPM'
-                        : 'ZAPISZ KALIBRACJĘ',
+                        : 'SAVE CALIBRATION',
                     style: const TextStyle(
                         fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
                   ),
@@ -231,7 +231,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
               if (!connected)
                 const Padding(
                   padding: EdgeInsets.only(top: 12),
-                  child: Text('Połącz się z ESP32 na ekranie głównym',
+                  child: Text('Connect to ESP32 from the main screen',
                       style: TextStyle(color: Colors.grey)),
                 ),
             ],

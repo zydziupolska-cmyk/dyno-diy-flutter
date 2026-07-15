@@ -97,7 +97,7 @@ class _GpsDiagnosticsScreenState extends State<GpsDiagnosticsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Diagnostyka GPS'),
+        title: const Text('GPS Diagnostics'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
@@ -140,7 +140,7 @@ class _GpsDiagnosticsScreenState extends State<GpsDiagnosticsScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _StatBox('Łącznie', '$_totalSamples', Colors.grey),
-                    _StatBox('Odrzucone', '$_rejectedSamples', Colors.redAccent),
+                    _StatBox('Rejected', '$_rejectedSamples', Colors.redAccent),
                     _StatBox('Max skok', '${_maxJump.toStringAsFixed(1)} km/h',
                         _maxJump > 3 ? Colors.orangeAccent : Colors.greenAccent),
                   ],
@@ -159,14 +159,14 @@ class _GpsDiagnosticsScreenState extends State<GpsDiagnosticsScreen> {
                         color: Colors.greenAccent,
                         borderRadius: BorderRadius.circular(2))),
                 const SizedBox(width: 6),
-                const Text('Zaakceptowane', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                const Text('Accepted', style: TextStyle(color: Colors.grey, fontSize: 12)),
                 const SizedBox(width: 16),
                 Container(width: 12, height: 12,
                     decoration: BoxDecoration(
                         color: Colors.redAccent,
                         borderRadius: BorderRadius.circular(2))),
                 const SizedBox(width: 6),
-                const Text('Odrzucone', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                const Text('Rejected', style: TextStyle(color: Colors.grey, fontSize: 12)),
               ],
             ),
           ),
@@ -176,7 +176,7 @@ class _GpsDiagnosticsScreenState extends State<GpsDiagnosticsScreen> {
           Expanded(
             child: _samples.isEmpty
                 ? const Center(
-                    child: Text('Oczekuję na dane GPS...',
+                    child: Text('Waiting for GPS data…',
                         style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 12),

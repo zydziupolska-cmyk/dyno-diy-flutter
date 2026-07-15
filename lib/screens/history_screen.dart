@@ -56,13 +56,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text('Usuń pomiar?'),
-        content: Text('Pomiar z ${_formatDate(run.timestamp)} zostanie trwale usunięty.'),
+        title: const Text('Delete run?'),
+        content: Text('Run from ${_formatDate(run.timestamp)} will be permanently deleted.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Anuluj')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Usuń', style: TextStyle(color: Colors.redAccent)),
+            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -84,7 +84,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (!authService.isLoggedIn) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Zaloguj się aby wysyłać pomiary do chmury')),
+          const SnackBar(content: Text('Log in to sync runs to the cloud')),
         );
       }
       return;
@@ -94,7 +94,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Włącz cloud sync w ustawieniach aplikacji'),
+            content: Text('Enable cloud sync in settings'),
             duration: Duration(seconds: 3),
           ),
         );
@@ -106,7 +106,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Wysyłam ${selected.length} pomiarów...'),
+          content: Text('Uploading ${selected.length} runs…'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -231,7 +231,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('DYNOMIC - Raport pomiaru',
+                    pw.Text('DYNOMIC — Run Report',
                         style: pw.TextStyle(
                             font: font, color: PdfColors.white,
                             fontSize: 20, fontWeight: pw.FontWeight.bold)),
@@ -245,30 +245,30 @@ class _HistoryScreenState extends State<HistoryScreen> {
               pw.SizedBox(height: 16),
 
               // Dane pojazdu
-              pw.Text('Pojazd',
+              pw.Text('Vehicle',
                   style: pw.TextStyle(font: font, fontSize: 14,
                       fontWeight: pw.FontWeight.bold)),
               pw.Divider(),
-              _pdfRow(ascii('Nazwa'), ascii(car.name), font: font),
+              _pdfRow(ascii('Name'), ascii(car.name), font: font),
               if (car.licensePlate != null)
-                _pdfRow('Rejestracja', ascii(car.licensePlate!), font: font),
-              _pdfRow('Waga sesji',
+                _pdfRow('Licence plate', ascii(car.licensePlate!), font: font),
+              _pdfRow('Session weight',
                   '${run.sessionWeightKg.toStringAsFixed(0)} kg', font: font),
               _pdfRow('Naped', ascii(car.transmission.name.toUpperCase()),
                   font: font),
               pw.SizedBox(height: 16),
 
               // Wyniki
-              pw.Text('Wyniki pomiaru',
+              pw.Text('Results',
                   style: pw.TextStyle(font: font, fontSize: 14,
                       fontWeight: pw.FontWeight.bold)),
               pw.Divider(),
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
                 children: [
-                  _pdfResultBox('Moc max',
+                  _pdfResultBox('Max power',
                       '${run.maxEngineHp.toStringAsFixed(1)} KM', font: font),
-                  _pdfResultBox('Moment max',
+                  _pdfResultBox('Max torque',
                       '${run.maxEngineTorque.toStringAsFixed(1)} Nm', font: font),
                   _pdfResultBox('Korekcja DIN',
                       'x${run.correctionFactor.toStringAsFixed(4)}', font: font),
@@ -277,12 +277,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
               pw.SizedBox(height: 16),
 
               // Tabela punktów
-              pw.Text('Dane krzywej mocy',
+              pw.Text('Power curve data',
                   style: pw.TextStyle(font: font, fontSize: 14,
                       fontWeight: pw.FontWeight.bold)),
               pw.Divider(),
               if (spots.isEmpty)
-                pw.Text('Brak danych', style: pw.TextStyle(font: font,
+                pw.Text('No data', style: pw.TextStyle(font: font,
                     color: PdfColors.grey, fontSize: 10))
               else
                 pw.Table(
@@ -467,7 +467,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: Colors.grey[900],
-          title: const Text('Importuj dane XML'),
+          title: const Text('Import XML data'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -486,11 +486,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Anuluj'),
+              child: const Text('Cancel'),
             ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Importuj',
+              child: const Text('Import',
                   style: TextStyle(color: Colors.greenAccent)),
             ),
           ],
@@ -557,7 +557,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (cal == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Brak kalibracji – nie można obliczyć RPM dla wydruku'),
+          content: Text('No calibration — cannot calculate RPM for export'),
           backgroundColor: Colors.orangeAccent,
         ),
       );
@@ -580,24 +580,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Archiwum Pomiarów'),
+        title: const Text('Measurement History'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.file_upload_outlined),
-            tooltip: 'Importuj XML',
+            tooltip: 'Import XML',
             onPressed: _importXml,
           ),
           if (_selectedRunIds.isNotEmpty) ...[
             IconButton(
               icon: const Icon(Icons.cloud_upload_outlined),
-              tooltip: 'Wyślij zaznaczone do chmury',
+              tooltip: 'Upload selected to cloud',
               onPressed: _uploadSelected,
             ),
             IconButton(
               icon: const Icon(Icons.code),
-              tooltip: 'Eksportuj XML',
+              tooltip: 'Export XML',
               onPressed: () {
                 final selected = _runs
                     .where((r) => _selectedRunIds.contains(r.id))
@@ -618,7 +618,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               child: DropdownButtonFormField<CarProfile>(
                 value: _selectedCar,
                 decoration: const InputDecoration(
-                  labelText: 'Pojazd',
+                  labelText: 'Vehicle',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.directions_car),
                 ),
@@ -684,8 +684,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             const SizedBox(height: 16),
                             Text(
                               _selectedCar == null
-                                  ? 'Brak pojazdów w garażu'
-                                  : 'Brak pomiarów dla ${_selectedCar!.name}',
+                                  ? 'No vehicles in garage'
+                                  : 'No runs for ${_selectedCar!.name}',
                               style:
                                   const TextStyle(color: Colors.grey, fontSize: 16),
                             ),
@@ -800,7 +800,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                               ],
                                             ),
                                             Text(
-                                              'Waga: ${run.sessionWeightKg.toStringAsFixed(0)} kg',
+                                              'Weight: ${run.sessionWeightKg.toStringAsFixed(0)} kg',
                                               style: const TextStyle(
                                                   color: Colors.grey,
                                                   fontSize: 12),
@@ -937,17 +937,17 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.print),
-            tooltip: 'Wydruk A4 (RPM)',
+            tooltip: 'A4 Print (RPM)',
             onPressed: widget.onExportPrintPdf,
           ),
           IconButton(
             icon: const Icon(Icons.picture_as_pdf),
-            tooltip: 'PDF mobilny',
+            tooltip: 'Mobile PDF',
             onPressed: widget.onExportPdf,
           ),
           IconButton(
             icon: const Icon(Icons.code),
-            tooltip: 'Eksportuj XML',
+            tooltip: 'Export XML',
             onPressed: widget.onExportXml,
           ),
         ],
@@ -964,16 +964,16 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _StatCard(
-                    label: 'Moc max',
+                    label: 'Max power',
                     value: '${maxHp.toStringAsFixed(1)} KM',
                     color: Colors.greenAccent),
                 if (maxNm > 0)
                   _StatCard(
-                      label: 'Moment max',
+                      label: 'Max torque',
                       value: '${maxNm.toStringAsFixed(1)} Nm',
                       color: Colors.blueAccent),
                 _StatCard(
-                    label: 'Waga',
+                    label: 'Weight',
                     value: '${widget.run.sessionWeightKg.toStringAsFixed(0)} kg',
                     color: Colors.orangeAccent),
                 _StatCard(
@@ -987,7 +987,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
             Row(children: [
               const Icon(Icons.tune, color: Colors.grey, size: 16),
               const SizedBox(width: 6),
-              const Text('Filtr:', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              const Text('Filter:', style: TextStyle(color: Colors.grey, fontSize: 12)),
               Expanded(
                 child: Slider(
                   value: _smoothing,
@@ -1016,7 +1016,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                     borderRadius: BorderRadius.circular(16)),
                 child: spots.isEmpty
                     ? const Center(
-                        child: Text('Brak danych wykresu',
+                        child: Text('No chart data',
                             style: TextStyle(color: Colors.grey)))
                     : LineChart(
                         LineChartData(
@@ -1263,7 +1263,7 @@ class _ComparisonScreenState extends State<ComparisonScreen>
 
     if (maxY == 0) {
       return const Center(
-        child: Text('Brak danych do porównania',
+        child: Text('No data to compare',
             style: TextStyle(color: Colors.grey)),
       );
     }
@@ -1322,7 +1322,7 @@ class _ComparisonScreenState extends State<ComparisonScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Porównanie'),
+        title: const Text('Comparison'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         bottom: TabBar(
@@ -1391,7 +1391,7 @@ class _ComparisonScreenState extends State<ComparisonScreen>
                                   color: Colors.grey, size: 48),
                               SizedBox(height: 12),
                               Text(
-                                'Brak danych Nm.',
+                                'No Nm data.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(color: Colors.grey),
                               ),
