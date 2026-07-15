@@ -220,7 +220,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                       : const Icon(Icons.save, color: Colors.white),
                   label: Text(
                     _currentSpeed < 5
-                        ? 'Drive at 3000 RPM to enable saving'
+                        ? 'Hold 3000 RPM to save'
                         : 'SAVE CALIBRATION',
                     style: const TextStyle(
                         fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
