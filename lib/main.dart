@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
@@ -14,11 +15,13 @@ import 'services/database_service.dart';
 import 'services/bluetooth_service.dart';
 import 'services/auth_service.dart';
 import 'services/measurement_upload_service.dart';
+import 'services/firmware_update_service.dart';
 import 'models/car_profile.dart';
 
-final dbService  = DatabaseService();
-final btService  = AppBleService();
+final dbService   = DatabaseService();
+final btService   = AppBleService();
 final authService = AuthService();
+final navigatorKey = GlobalKey<NavigatorState>();
 
 // Cache danych sesji pomiaru – przeżywa rebuild zakładek
 final Map<int, Map<String, double>> sessionCache = {};
@@ -32,6 +35,36 @@ Future<void> main() async {
 
   // Podepnij AuthService do BLE — potrzebny do handshake licencyjnego
   btService.setAuthService(authService);
+  // Powiadom użytkownika gdy ESP32 nie należy do jego konta
+  btService.setSerialMismatchCallback((serial) {
+    final ctx = navigatorKey.currentContext;
+    if (ctx == null) return;
+    showDialog(
+      context: ctx,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text('Device not yours',
+            style: TextStyle(color: Colors.white)),
+        content: Text(
+          'This ESP32 (serial: ${serial.substring(0, 8)}…) '
+          'is not linked to your account.\n\n'
+          'If you purchased this device, contact support to transfer it.',
+          style: const TextStyle(color: Colors.grey)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('OK',
+                style: TextStyle(color: Colors.redAccent))),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+            },
+            child: const Text('Contact support',
+                style: TextStyle(color: Colors.grey))),
+        ],
+      ),
+    );
+  });
 
   // Zsynchronizuj niezsynkowane pomiary w tle (nie blokuje startu)
   Future.delayed(const Duration(seconds: 3), () {
@@ -61,6 +94,7 @@ class DynoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'Dynomic',
       theme: ThemeData.dark().copyWith(
         primaryColor: Colors.redAccent,
@@ -118,6 +152,80 @@ class MainMenuScreen extends StatefulWidget {
 class _MainMenuScreenState extends State<MainMenuScreen> {
   int _tapCount = 0;
   DateTime? _lastTap;
+  StreamSubscription<bool>? _connSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // Sprawdź firmware gdy ESP32 się połączy
+    _connSub = btService.connectionStream.listen((connected) {
+      if (connected && mounted) {
+        _checkFirmwareUpdate();
+      }
+    });
+    // Sprawdź też od razu jeśli już połączony
+    if (btService.isConnected) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkFirmwareUpdate());
+    }
+  }
+
+  @override
+  void dispose() {
+    _connSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkFirmwareUpdate() async {
+    if (!mounted) return;
+    // Poczekaj chwilę żeby BLE się ustabilizowało
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted || !btService.isConnected) return;
+
+    // Odczytaj wersję firmware z ESP32 przez BLE
+    final currentVersion = await btService.readFirmwareVersion();
+    debugPrint('[MAIN] ESP32 firmware: $currentVersion');
+
+    final svc    = FirmwareUpdateService();
+    final update = await svc.checkForUpdate(currentVersion ?? '0.0.0');
+    if (!mounted || update == null) return;
+
+    ScaffoldMessenger.of(context).showMaterialBanner(MaterialBanner(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Firmware update available: v${update.version}',
+            style: const TextStyle(
+                fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          if (update.changelog.isNotEmpty)
+            Text(update.changelog,
+                style: TextStyle(fontSize: 12, color: Colors.grey[400])),
+        ],
+      ),
+      leading: const Icon(Icons.system_update, color: Colors.greenAccent),
+      backgroundColor: const Color(0xFF0d1f0d),
+      actions: [
+        TextButton(
+          onPressed: () {
+            ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+            Navigator.push(context, MaterialPageRoute(
+                builder: (_) => const OtaUpdateScreen()));
+          },
+          child: const Text('Update now',
+              style: TextStyle(
+                  color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+        ),
+        TextButton(
+          onPressed: () =>
+              ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+          child: const Text('Later',
+              style: TextStyle(color: Colors.grey)),
+        ),
+      ],
+    ));
+  }
 
   void _handleModuleTap() {
     final now = DateTime.now();
@@ -137,7 +245,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dynomic - Start', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Dynomic', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
         actions: [
           IconButton(

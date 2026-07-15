@@ -33,6 +33,35 @@ class AppBleService {
   AuthService? _authService;
   void setAuthService(AuthService auth) => _authService = auth;
 
+  /// Callback wywoływany gdy serial ESP32 nie pasuje do konta
+  Function(String serial)? _onSerialMismatch;
+  void setSerialMismatchCallback(Function(String serial) cb) {
+    _onSerialMismatch = cb;
+  }
+
+  /// Odczytuje serial urządzenia z LIC_SERIAL_UUID
+  Future<String?> _readDeviceSerial(BluetoothDevice device) async {
+    const licServiceUuid = '19b10000-e8f2-537e-4f6c-d104768a1216';
+    const licSerialUuid  = '19b10001-e8f2-537e-4f6c-d104768a1216';
+    try {
+      final services = await device.discoverServices();
+      for (final svc in services) {
+        if (svc.uuid.toString().toLowerCase() != licServiceUuid) continue;
+        for (final ch in svc.characteristics) {
+          if (ch.uuid.toString().toLowerCase() == licSerialUuid) {
+            final bytes = await ch.read();
+            if (bytes.isNotEmpty) {
+              return String.fromCharCodes(bytes).trim();
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[BLE] readDeviceSerial error: $e');
+    }
+    return null;
+  }
+
   BluetoothDevice? _device;
   BluetoothDevice? get currentDevice => _device;
 
@@ -133,12 +162,30 @@ class AppBleService {
       debugPrint('[BLE] Polaczono z ${device.platformName}');
       await Future.delayed(const Duration(milliseconds: 500));
 
+      // ── Weryfikacja seryjna ────────────────────────────────────
+      // Sprawdź czy to urządzenie należy do zalogowanego konta.
+      // Jeśli serial nie pasuje — rozłącz i powiadom użytkownika.
+      final serial = await _readDeviceSerial(device);
+      debugPrint('[BLE] Device serial: $serial');
+
+      if (serial != null && _authService != null) {
+        final userSerial = _authService!.license?.deviceSerial;
+        if (userSerial != null &&
+            serial.toUpperCase() != userSerial.toUpperCase()) {
+          debugPrint('[BLE] Serial mismatch: $serial != $userSerial');
+          await device.disconnect();
+          isConnected = false;
+          _connectionController.add(false);
+          _setAuthState(BleAuthState.unauthorized);
+          _onSerialMismatch?.call(serial);
+          return;
+        }
+      }
+
       // ── Handshake licencyjny ───────────────────────────────────
-      // Wykonaj PRZED setupNotifications — GPS milczy dopóki nie
-      // zweryfikujemy licencji po stronie ESP32.
       await _performLicenseHandshake(device);
 
-      // Nasłuchuj GPS (dane przyjdą dopiero po autoryzacji w ESP32)
+      // Nasłuchuj GPS
       await _setupNotifications(device);
     } catch (e) {
       debugPrint('[BLE] Blad polaczenia: $e');
@@ -256,6 +303,35 @@ class AppBleService {
     isConnected = false;
     _scanning = false;
     _connectionController.add(false);
+  }
+
+  /// Odczytuje wersję firmware z OTA_CONTROL characteristic ESP32.
+  /// Zwraca np. "4.0.0" lub null jeśli nie można odczytać.
+  Future<String?> readFirmwareVersion() async {
+    if (_device == null) return null;
+    const otaServiceUuid  = '19b10000-e8f2-537e-4f6c-d104768a1215';
+    const otaControlUuid  = '19b10001-e8f2-537e-4f6c-d104768a1215';
+    try {
+      final services = await _device!.discoverServices();
+      for (final svc in services) {
+        if (svc.uuid.toString().toLowerCase() != otaServiceUuid) continue;
+        for (final ch in svc.characteristics) {
+          if (ch.uuid.toString().toLowerCase() == otaControlUuid) {
+            final bytes = await ch.read();
+            if (bytes.isNotEmpty) {
+              final ver = String.fromCharCodes(bytes).trim();
+              if (RegExp(r'^\d+\.\d+\.\d+$').hasMatch(ver)) {
+                debugPrint('[BLE] Firmware version: $ver');
+                return ver;
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[BLE] readFirmwareVersion error: $e');
+    }
+    return null;
   }
 
   void dispose() {
