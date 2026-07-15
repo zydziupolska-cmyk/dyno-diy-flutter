@@ -56,7 +56,7 @@ Future<void> main() async {
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
             child: const Text('OK',
-                style: TextStyle(color: Colors.redAccent))),
+                style: TextStyle(color: const Color(0xFFE51C1C)))),
           TextButton(
             onPressed: () {
               Navigator.pop(dialogCtx);
@@ -98,9 +98,128 @@ class DynoApp extends StatelessWidget {
     return MaterialApp(
       navigatorKey: navigatorKey,
       title: 'Dynomic',
-      theme: ThemeData.dark().copyWith(
-        primaryColor: Colors.redAccent,
-        scaffoldBackgroundColor: const Color(0xFF121212),
+      theme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF0d0d0d),
+        colorScheme: const ColorScheme.dark(
+          primary:   Color(0xFFE51C1C),
+          secondary: Color(0xFFE51C1C),
+          surface:   Color(0xFF111111),
+          error:     Color(0xFFE51C1C),
+        ),
+        // AppBar
+        appBarTheme: const AppBarTheme(
+          backgroundColor:  Color(0xFF0d0d0d),
+          foregroundColor:  Colors.white,
+          elevation:        0,
+          scrolledUnderElevation: 0,
+          titleTextStyle: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+          iconTheme: IconThemeData(color: Color(0xFF888888)),
+          actionsIconTheme: IconThemeData(color: Color(0xFF888888)),
+        ),
+        // BottomNavigationBar
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor:     Color(0xFF0d0d0d),
+          selectedItemColor:   Color(0xFFE51C1C),
+          unselectedItemColor: Color(0xFF444444),
+          type:                BottomNavigationBarType.fixed,
+          selectedLabelStyle:  TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+          unselectedLabelStyle:TextStyle(fontSize: 10),
+          elevation: 0,
+        ),
+        // Karty
+        cardTheme: const CardThemeData(
+          color:  Color(0xFF111111),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+            side: BorderSide(color: Color(0xFF1e1e1e)),
+          ),
+        ),
+        // Przyciski
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFE51C1C),
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+            textStyle: const TextStyle(
+                fontWeight: FontWeight.w700, fontSize: 15),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFFE51C1C),
+            side: const BorderSide(color: Color(0xFFE51C1C)),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFFE51C1C),
+          ),
+        ),
+        // InputDecoration
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF141414),
+          labelStyle: const TextStyle(color: Color(0xFF666666)),
+          hintStyle: const TextStyle(color: Color(0xFF444444)),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFF1e1e1e)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFF1e1e1e)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFE51C1C), width: 1.5),
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14, vertical: 12),
+        ),
+        // Divider
+        dividerTheme: const DividerThemeData(
+          color: Color(0xFF1e1e1e),
+          thickness: 0.5,
+        ),
+        // Text
+        textTheme: const TextTheme(
+          bodyLarge:   TextStyle(color: Colors.white),
+          bodyMedium:  TextStyle(color: Color(0xFFBBBBBB)),
+          bodySmall:   TextStyle(color: Color(0xFF666666)),
+          titleLarge:  TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+          titleMedium: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          labelSmall:  TextStyle(color: Color(0xFF555555), fontSize: 10),
+        ),
+        // SnackBar
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: const Color(0xFF1a1a1a),
+          contentTextStyle: const TextStyle(color: Colors.white),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10)),
+          behavior: SnackBarBehavior.floating,
+        ),
+        // Switch/Checkbox
+        switchTheme: SwitchThemeData(
+          thumbColor: WidgetStateProperty.resolveWith(
+              (s) => s.contains(WidgetState.selected)
+                  ? const Color(0xFFE51C1C)
+                  : const Color(0xFF444444)),
+          trackColor: WidgetStateProperty.resolveWith(
+              (s) => s.contains(WidgetState.selected)
+                  ? const Color(0xFFE51C1C).withValues(alpha: 0.3)
+                  : const Color(0xFF222222)),
+        ),
       ),
       home: const AuthGate(),
     );
@@ -142,9 +261,9 @@ class _AuthGateState extends State<AuthGate> {
     // Ładowanie prefs lub auth
     if (_checkingPrefs || !auth.initialized) {
       return const Scaffold(
-        backgroundColor: Color(0xFF121212),
+        backgroundColor: Color(0xFF0d0d0d),
         body: Center(
-          child: CircularProgressIndicator(color: Colors.redAccent),
+          child: CircularProgressIndicator(color: Color(0xFFE51C1C)),
         ),
       );
     }
@@ -275,50 +394,58 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dynomic', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
+        title: Row(
+          children: [
+            // Logo SVG Dynomic
+            SizedBox(
+              width: 26, height: 26,
+              child: CustomPaint(painter: _DynomicLogoPainter()),
+            ),
+            const SizedBox(width: 8),
+            const Text('Dynomic',
+                style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: 0.3)),
+          ],
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.system_update_alt),
-            tooltip: 'Aktualizacja firmware ESP32',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => const OtaUpdateScreen()),
-            ),
+            icon: const Icon(Icons.system_update_alt, size: 20),
+            tooltip: 'Firmware update',
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const OtaUpdateScreen())),
           ),
           IconButton(
-            icon: const Icon(Icons.business_outlined),
-            tooltip: 'Ustawienia warsztatu',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => const WorkshopSettingsScreen()),
-            ),
+            icon: const Icon(Icons.business_outlined, size: 20),
+            tooltip: 'Workshop settings',
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const WorkshopSettingsScreen())),
           ),
           IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Wyloguj',
+            icon: const Icon(Icons.logout, size: 20),
+            tooltip: 'Log out',
             onPressed: () async {
               final confirm = await showDialog<bool>(
                 context: context,
                 builder: (ctx) => AlertDialog(
                   backgroundColor: const Color(0xFF1A1A1A),
-                  title: const Text('Wyloguj',
+                  title: const Text('Log out',
                       style: TextStyle(color: Colors.white)),
                   content: const Text(
-                      'Czy na pewno chcesz się wylogować?',
+                      'Are you sure you want to log out?',
                       style: TextStyle(color: Colors.grey)),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('Anuluj',
+                      child: const Text('Cancel',
                           style: TextStyle(color: Colors.grey)),
                     ),
                     TextButton(
                       onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('Wyloguj',
-                          style: TextStyle(color: Colors.redAccent)),
+                      child: const Text('Log out',
+                          style: TextStyle(color: const Color(0xFFE51C1C))),
                     ),
                   ],
                 ),
@@ -341,14 +468,14 @@ StreamBuilder<bool>(
   initialData: false,
   builder: (context, snapshot) {
     bool connected = snapshot.data ?? false;
-    Color statusColor = connected ? Colors.green : Colors.redAccent;
+    Color statusColor = connected ? Colors.green : const Color(0xFFE51C1C);
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[900],
+        color: const Color(0xFF111111),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: statusColor, width: 2),
+        border: Border.all(color: const Color(0xFF1e1e1e)),
       ),
       child: Row(
         children: [
@@ -377,7 +504,7 @@ StreamBuilder<bool>(
                   builder: (context, satSnapshot) {
                     int sats = satSnapshot.data ?? 0;
                     // Prosta logika: 0-3 brak fixa, 4-6 Fix 2D, >6 Fix 3D
-                    String fixType = "Searching...";
+                    String fixType = "Szukam...";
                     if (sats > 6) { fixType = "Fix 3D"; }
                     else if (sats > 0) { fixType = "Fix 2D"; }
 
@@ -398,7 +525,7 @@ StreamBuilder<bool>(
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
-              child: const Text('Connect', style: TextStyle(fontWeight: FontWeight.bold)),
+              child: const Text('Connect', style: TextStyle(fontSize: 14)),
             )
           else
             Text(
@@ -412,7 +539,7 @@ StreamBuilder<bool>(
 ),
       
             const SizedBox(height: 30),
-            const Text('Your Fleet (Choose a vehicle):', style: TextStyle(fontSize: 18, color: Colors.grey)),
+            const Text('Your Fleet (Select a vehicle):', style: TextStyle(fontSize: 18, color: Colors.grey)),
             const SizedBox(height: 10),
 
             // LISTA POJAZDÓW Z BAZY DANYCH
@@ -421,13 +548,13 @@ StreamBuilder<bool>(
                 future: dbService.getAllCars(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator(color: Colors.redAccent));
+                    return const Center(child: CircularProgressIndicator(color: const Color(0xFFE51C1C)));
                   }
                   
                   final cars = snapshot.data ?? [];
 
                   if (cars.isEmpty) {
-                    return const Center(child: Text('Brak aut w garażu. Dodaj pierwsze!', style: TextStyle(color: Colors.grey)));
+                    return const Center(child: Text('No cars in the garage. Add the first one!', style: TextStyle(color: Colors.grey)));
                   }
 
                   return ListView.builder(
@@ -445,27 +572,27 @@ StreamBuilder<bool>(
                           
                           // PRZYCISK USUWANIA (Z ALERTEM)
                           trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                            icon: const Icon(Icons.delete_outline, color: const Color(0xFFE51C1C)),
                             onPressed: () async {
                               final bool? confirm = await showDialog<bool>(
                                 context: context,
                                 builder: (BuildContext context) {
                                   return AlertDialog(
-                                    backgroundColor: Colors.grey[900],
-                                    title: const Text('Usuń pojazd', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                    backgroundColor: const Color(0xFF111111),
+                                    title: const Text('Delete Vehicle', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                                     content: Text(
-                                      'Czy na pewno chcesz usunąć pojazd "${car.name}"?\nTej operacji nie można cofnąć.',
+                                      'Are you sure you want to delete the vehicle "${car.name}"?\nThis action cannot be undone.',
                                       style: const TextStyle(color: Colors.grey),
                                     ),
                                     actions: [
                                       TextButton(
                                         onPressed: () => Navigator.of(context).pop(false),
-                                        child: const Text('ANULUJ', style: TextStyle(color: Colors.grey)),
+                                        child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
                                       ),
                                       ElevatedButton(
-                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE51C1C)),
                                         onPressed: () => Navigator.of(context).pop(true),
-                                        child: const Text('USUŃ', style: TextStyle(color: Colors.white)),
+                                        child: const Text('DELETE', style: TextStyle(color: Colors.white)),
                                       ),
                                     ],
                                   );
@@ -496,21 +623,21 @@ StreamBuilder<bool>(
         ),
       ),
       // PRZYCISK DODAWANIA NOWEGO AUTA
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         onPressed: () async {
           final newCar = await Navigator.push<CarProfile>(
             context,
             MaterialPageRoute(builder: (context) => const AddCarScreen()),
           );
-
           if (newCar != null) {
             await dbService.saveCar(newCar);
-            setState(() {}); 
+            setState(() {});
           }
         },
-        backgroundColor: Colors.redAccent,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Add Vehicle', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFFE51C1C),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        child: const Icon(Icons.add, size: 26),
       ),
     );
   }
@@ -543,19 +670,40 @@ class _SessionNavigationState extends State<SessionNavigation> {
 
     return Scaffold(
       body: screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
-        selectedItemColor: Colors.redAccent,
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.black,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
-          BottomNavigationBarItem(icon: Icon(Icons.sync), label: 'Calibration'),
-          BottomNavigationBarItem(icon: Icon(Icons.speed), label: 'Measurement'),
-          BottomNavigationBarItem(icon: Icon(Icons.analytics), label: 'History'),
-        ],
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF0d0d0d),
+          border: Border(top: BorderSide(color: Color(0xFF1e1e1e), width: 0.5)),
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: (index) => setState(() => _currentIndex = index),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          type: BottomNavigationBarType.fixed,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.directions_car_outlined),
+              activeIcon: Icon(Icons.directions_car),
+              label: 'Vehicle',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.tune_outlined),
+              activeIcon: Icon(Icons.tune),
+              label: 'Calibrate',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.timer_outlined),
+              activeIcon: Icon(Icons.timer),
+              label: 'Run',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.show_chart_outlined),
+              activeIcon: Icon(Icons.show_chart),
+              label: 'History',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -569,5 +717,43 @@ class _PomiarTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PreLaunchScreen(car: car);
+  }
+}
+
+/// Logo Dynomic z formatu SVG 
+class _DynomicLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Skalowanie płótna z oryginalnego wymiaru 28x28 na docelowy wymiar widgetu (np. 26x26)
+    final double scaleX = size.width / 28.0;
+    final double scaleY = size.height / 28.0;
+    canvas.scale(scaleX, scaleY);
+
+    // Wspólne ustawienia pędzla (odpowiadają za atrybuty 'stroke' z SVG)
+    final Paint paint = Paint()
+      ..color = const Color(0xFFE51C1C) // HEX #E51C1C (0xFF to 100% nieprzezroczystości)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round   // stroke-linecap="round"
+      ..strokeJoin = StrokeJoin.round; // stroke-linejoin="round"
+
+    // 1. Rysowanie okręgu: <circle cx="14" cy="14" r="13" />
+    canvas.drawCircle(const Offset(14, 14), 13, paint);
+
+    // 2. Rysowanie ścieżki (zygzak): <path d="M7 14 L11 10 L14 16 L18 8 L21 14" />
+    final Path path = Path()
+      ..moveTo(7, 14)  // M7 14
+      ..lineTo(11, 10) // L11 10
+      ..lineTo(14, 16) // L14 16
+      ..lineTo(18, 8)  // L18 8
+      ..lineTo(21, 14); // L21 14
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    // Logo jest statyczne, więc nie ma potrzeby przerysowywania przy aktualizacjach stanu
+    return false;
   }
 }

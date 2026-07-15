@@ -78,7 +78,7 @@ class _GarageScreenState extends State<GarageScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Settings: ${widget.car.name}'),
-        backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
+        backgroundColor: const Color(0xFFE51C1C),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
@@ -86,7 +86,7 @@ class _GarageScreenState extends State<GarageScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Vehicle parameters:',
-                style: TextStyle(fontSize: 18, color: Colors.redAccent,
+                style: TextStyle(fontSize: 18, color: const Color(0xFFE51C1C),
                     fontWeight: FontWeight.bold)),
             const SizedBox(height: 15),
             TextField(
@@ -102,7 +102,7 @@ class _GarageScreenState extends State<GarageScreen> {
             ),
             const SizedBox(height: 30),
             const Text('Correction conditions (DIN standard):',
-                style: TextStyle(fontSize: 18, color: Colors.redAccent,
+                style: TextStyle(fontSize: 18, color: const Color(0xFFE51C1C),
                     fontWeight: FontWeight.bold)),
             const SizedBox(height: 15),
             Row(
@@ -136,7 +136,7 @@ class _GarageScreenState extends State<GarageScreen> {
             ),
             const SizedBox(height: 30),
             Card(
-              color: Colors.grey[850],
+              color: const Color(0xFF141414),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
               child: const Padding(
@@ -147,8 +147,8 @@ class _GarageScreenState extends State<GarageScreen> {
                     SizedBox(width: 15),
                     Expanded(
                       child: Text(
-                        'Precise weight is crucial for an accurate measurement '
-                        '(error of 50kg is acceptable. 3-5% deviation in results). '
+                        'Accurate weight is key to proper measurement '
+                        '(a 50kg error is about 3-5% in result deviation). '
                         'Temperature and pressure are used for DIN correction '
                         'of results according to DIN 70020 standard.',
                         style: TextStyle(height: 1.4),

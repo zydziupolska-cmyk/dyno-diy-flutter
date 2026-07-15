@@ -144,7 +144,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
               Text(
                 connected ? 'GPS active' : 'ESP32 not connected',
                 style: TextStyle(
-                  color: connected ? Colors.greenAccent : Colors.redAccent,
+                  color: connected ? Colors.greenAccent : const Color(0xFFE51C1C),
                   fontSize: 14,
                 ),
               ),
@@ -163,7 +163,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
               if (previewRpm != null) ...[
                 const SizedBox(height: 8),
                 Text(
-                  '≈ ${previewRpm.toStringAsFixed(0)} RPM teraz',
+                  '≈ ${previewRpm.toStringAsFixed(0)} RPM now',
                   style: const TextStyle(color: Colors.grey, fontSize: 14),
                 ),
               ],
@@ -220,7 +220,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                       : const Icon(Icons.save, color: Colors.white),
                   label: Text(
                     _currentSpeed < 5
-                        ? 'Drive and maintain 3000 RPM'
+                        ? 'Drive at 3000 RPM to enable saving'
                         : 'SAVE CALIBRATION',
                     style: const TextStyle(
                         fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),

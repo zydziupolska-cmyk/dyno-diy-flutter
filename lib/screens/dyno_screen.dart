@@ -141,7 +141,7 @@ class _DynoScreenState extends State<DynoScreen> {
         content: Text(auth == BleAuthState.noLicense
           ? 'No licence. Please log in.'
           : 'Nieautoryzowane urządzenie. Sprawdź czy to Twój sprzęt.'),
-        backgroundColor: Colors.redAccent,
+        backgroundColor: const Color(0xFFE51C1C),
       ));
       return;
     }
@@ -437,7 +437,7 @@ class _DynoScreenState extends State<DynoScreen> {
   @override
   Widget build(BuildContext context) {
     String statusText = btService.isConnected
-        ? 'Ready to start' : 'Waiting for ESP32...';
+        ? 'READY TO START' : 'WAITING FOR ESP32...';
     Color statusColor = btService.isConnected
         ? Colors.grey : Colors.orangeAccent;
 
@@ -445,16 +445,16 @@ class _DynoScreenState extends State<DynoScreen> {
     if (btService.isConnected) {
       switch (_bleAuthState) {
         case BleAuthState.verifying:
-          statusText  = '🔐 LICENSE VERIFICATION...';
+          statusText  = '🔐 VERIFICATION IN PROGRESS...';
           statusColor = Colors.orangeAccent;
           break;
         case BleAuthState.unauthorized:
           statusText  = '⛔ UNAUTHORIZED DEVICE';
-          statusColor = Colors.redAccent;
+          statusColor = const Color(0xFFE51C1C);
           break;
         case BleAuthState.noLicense:
           statusText  = '⚠️ NO LICENSE — PLEASE LOG IN';
-          statusColor = Colors.redAccent;
+          statusColor = const Color(0xFFE51C1C);
           break;
         case BleAuthState.authorized:
           statusText  = 'READY TO START ✓';
@@ -478,11 +478,11 @@ class _DynoScreenState extends State<DynoScreen> {
       statusText  = 'ACCELERATING';
       statusColor = Colors.greenAccent;
     } else if (_state == MeasurementState.coasting) {
-      statusText  = 'COASTING: DO NOT APPLY BRAKES!';
+      statusText  = 'COASTING: DO NOT BRAKE!';
       statusColor = Colors.orangeAccent;
     } else if (_state == MeasurementState.finished) {
-      statusText  = 'SAVED';
-      statusColor = Colors.redAccent;
+      statusText  = 'SAVE COMPLETE';
+      statusColor = const Color(0xFFE51C1C);
     }
 
     // Zakres osi X — RPM z ustawień lub dynamicznie z danych
@@ -524,7 +524,7 @@ class _DynoScreenState extends State<DynoScreen> {
                   padding: const EdgeInsets.only(top: 8),
                   child: LinearProgressIndicator(
                     value: _coastingElapsed / 15.0,
-                    backgroundColor: Colors.grey[800],
+                    backgroundColor: const Color(0xFF1a1a1a),
                     color: Colors.orangeAccent, minHeight: 6,
                   ),
                 ),
@@ -712,7 +712,7 @@ class _DynoScreenState extends State<DynoScreen> {
                 border: Border.all(
                   color: (_state == MeasurementState.idle ||
                           _state == MeasurementState.finished)
-                      ? Colors.greenAccent : Colors.redAccent,
+                      ? Colors.greenAccent : const Color(0xFFE51C1C),
                   width: 3,
                 ),
               ),
@@ -722,7 +722,7 @@ class _DynoScreenState extends State<DynoScreen> {
                     ? Icons.play_arrow : Icons.fiber_manual_record,
                 color: (_state == MeasurementState.idle ||
                         _state == MeasurementState.finished)
-                    ? Colors.greenAccent : Colors.redAccent,
+                    ? Colors.greenAccent : const Color(0xFFE51C1C),
                 size: 40,
               ),
             ),

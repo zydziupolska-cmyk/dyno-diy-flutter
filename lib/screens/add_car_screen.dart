@@ -20,7 +20,7 @@ class _AddCarScreenState extends State<AddCarScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Add new vehicle', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
+        backgroundColor: const Color(0xFF0d0d0d),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -31,11 +31,11 @@ class _AddCarScreenState extends State<AddCarScreen> {
               // POLE: NAZWA
               TextFormField(
                 decoration: const InputDecoration(
-                  labelText: 'Brand and Model (e.g., BMW E46)',
+                  labelText: 'Marka i model (np. BMW E46 M3)',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.directions_car),
                 ),
-                validator: (val) => val == null || val.isEmpty ? 'This field is required' : null,
+                validator: (val) => val == null || val.isEmpty ? 'To pole jest wymagane' : null,
                 onSaved: (val) => _name = val!,
               ),
               const SizedBox(height: 16),
@@ -43,7 +43,7 @@ class _AddCarScreenState extends State<AddCarScreen> {
               // POLE: REJESTRACJA
               TextFormField(
                 decoration: const InputDecoration(
-                  labelText: 'License Plate (optional)',
+                  labelText: 'Numer rejestracyjny (opcjonalnie)',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.badge),
                 ),
@@ -55,7 +55,7 @@ class _AddCarScreenState extends State<AddCarScreen> {
               // POLE: SKRZYNIA BIEGÓW I NAPĘD
               DropdownButtonFormField<TransmissionType>(
                 decoration: const InputDecoration(
-                  labelText: 'Drive Type / Transmission',
+                  labelText: 'Rodzaj napędu / Skrzynia',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.settings),
                 ),
@@ -78,7 +78,7 @@ class _AddCarScreenState extends State<AddCarScreen> {
               // PRZYCISK ZAPISU
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.redAccent,
+                  backgroundColor: const Color(0xFFE51C1C),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),

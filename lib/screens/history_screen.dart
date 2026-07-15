@@ -57,14 +57,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: const Color(0xFF111111),
         title: const Text('Delete run?'),
         content: Text('Run from ${_formatDate(run.timestamp)} will be permanently deleted.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+            child: const Text('Delete', style: TextStyle(color: const Color(0xFFE51C1C))),
           ),
         ],
       ),
@@ -471,7 +471,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: Colors.grey[900],
+          backgroundColor: const Color(0xFF111111),
           title: const Text('Import XML data'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -550,7 +550,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Błąd importu: $e'),
-          backgroundColor: Colors.redAccent,
+          backgroundColor: const Color(0xFFE51C1C),
         ),
       );
     }
@@ -679,7 +679,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Expanded(
             child: _loading
                 ? const Center(
-                    child: CircularProgressIndicator(color: Colors.redAccent))
+                    child: CircularProgressIndicator(color: const Color(0xFFE51C1C)))
                 : _runs.isEmpty
                     ? Center(
                         child: Column(
@@ -718,10 +718,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               alignment: Alignment.centerRight,
                               padding: const EdgeInsets.only(right: 20),
                               decoration: BoxDecoration(
-                                color: Colors.redAccent.withValues(alpha: 0.2),
+                                color: const Color(0xFFE51C1C),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: const Icon(Icons.delete, color: Colors.redAccent),
+                              child: const Icon(Icons.delete, color: const Color(0xFFE51C1C)),
                             ),
                             confirmDismiss: (_) async {
                               await _deleteRun(run);
@@ -729,7 +729,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             },
                             child: Card(
                               margin: const EdgeInsets.only(bottom: 12),
-                              color: isSelected ? Colors.grey[850] : Colors.grey[900],
+                              color: isSelected ? const Color(0xFF141414) : const Color(0xFF111111),
                               shape: RoundedRectangleBorder(
                                 side: BorderSide(
                                   color: isSelected ? color : Colors.transparent,
@@ -1443,7 +1443,7 @@ class _ComparisonScreenState extends State<ComparisonScreen>
                                 style: TextStyle(color: Colors.grey),
                               ),
                               Text(
-                                'Perform a new measurement with calibration.',
+                                'Wykonaj nowy pomiar z kalibracja.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(color: Colors.grey, fontSize: 12),
                               ),
