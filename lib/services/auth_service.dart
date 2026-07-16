@@ -3,6 +3,16 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+// ── Wyjątek rate limiting ────────────────────────────────────
+
+class RateLimitedException implements Exception {
+  final int retryAfterSeconds;
+  const RateLimitedException(this.retryAfterSeconds);
+
+  @override
+  String toString() => 'Too many attempts. Try again in ${retryAfterSeconds}s.';
+}
+
 // ── Modele ───────────────────────────────────────────────────
 
 class DlUser {
@@ -50,9 +60,9 @@ class DlUser {
 }
 
 class DlLicense {
-  final String payload;     // JSON z userId, serial, issuedAt, expiresAt
-  final String signature;   // Ed25519 podpis serwera (base64)
-  final String serverPubkey;// Klucz publiczny serwera (base64)
+  final String payload;
+  final String signature;
+  final String serverPubkey;
   final String expiresAt;
 
   const DlLicense({
@@ -76,21 +86,18 @@ class DlLicense {
     'expires_at':    expiresAt,
   };
 
-  /// Zwraca userId z payloadu (bez weryfikacji sygnatury — to robi ESP32)
   int? get userId {
     try {
       return (jsonDecode(payload) as Map)['userId'] as int?;
     } catch (_) { return null; }
   }
 
-  /// Zwraca serial urządzenia z payloadu
   String? get deviceSerial {
     try {
       return (jsonDecode(payload) as Map)['serial'] as String?;
     } catch (_) { return null; }
   }
 
-  /// Czy licencja jest nadal ważna (sprawdzenie daty po stronie klienta)
   bool get isExpired {
     try {
       return DateTime.parse(expiresAt).isBefore(DateTime.now());
@@ -100,12 +107,6 @@ class DlLicense {
 
 // ── AuthService ──────────────────────────────────────────────
 
-/// Serwis autoryzacji — logowanie, rejestracja, cache licencji.
-/// Używa flutter_secure_storage do bezpiecznego przechowywania tokenu i licencji.
-///
-/// Wymagane pakiety w pubspec.yaml:
-///   http: ^1.2.0
-///   flutter_secure_storage: ^9.0.0
 class AuthService extends ChangeNotifier {
   static const String _baseUrl = 'https://dynomic.pro';
 
@@ -113,7 +114,6 @@ class AuthService extends ChangeNotifier {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
-  // Storage keys
   static const _kToken   = 'dl_auth_token';
   static const _kUser    = 'dl_user_json';
   static const _kLicense = 'dl_license_json';
@@ -130,7 +130,7 @@ class AuthService extends ChangeNotifier {
   bool       get hasLicense  => _license != null && !(_license!.isExpired);
   bool       get initialized => _initialized;
 
-  // ── Init (wywołaj przy starcie app) ─────────────────────────
+  // ── Init ────────────────────────────────────────────────────
   Future<void> init() async {
     try {
       _token = await _storage.read(key: _kToken);
@@ -146,7 +146,24 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Helper: sprawdź 429 przed przetworzeniem odpowiedzi ─────
+  /// Rzuca [RateLimitedException] gdy serwer odpowie 429.
+  /// Wołaj bezpośrednio po każdym http.post/get w metodach auth.
+  void _checkRateLimit(http.Response res) {
+    if (res.statusCode != 429) return;
+    int retryAfter = 60;
+    try {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      retryAfter = (body['retry_after'] as num?)?.toInt() ?? retryAfter;
+    } catch (_) {
+      final header = res.headers['retry-after'];
+      if (header != null) retryAfter = int.tryParse(header) ?? retryAfter;
+    }
+    throw RateLimitedException(retryAfter);
+  }
+
   // ── Rejestracja ─────────────────────────────────────────────
+  /// Rzuca [RateLimitedException] — obsłuż w UI.
   Future<({bool ok, String? error})> register({
     required String email,
     required String password,
@@ -171,17 +188,20 @@ class AuthService extends ChangeNotifier {
         }),
       ).timeout(const Duration(seconds: 15));
 
+      _checkRateLimit(res); // rzuca RateLimitedException jeśli 429
+
       final json = jsonDecode(res.body) as Map<String, dynamic>;
-      if (json['ok'] == true) {
-        return (ok: true, error: null);
-      }
+      if (json['ok'] == true) return (ok: true, error: null);
       return (ok: false, error: json['error'] as String? ?? 'Registration failed');
+    } on RateLimitedException {
+      rethrow; // niech UI samo obsłuży odliczanie
     } on Exception catch (e) {
       return (ok: false, error: 'Network error: $e');
     }
   }
 
   // ── Logowanie ────────────────────────────────────────────────
+  /// Rzuca [RateLimitedException] — obsłuż w UI.
   Future<({bool ok, String? error})> login({
     required String email,
     required String password,
@@ -197,23 +217,23 @@ class AuthService extends ChangeNotifier {
         }),
       ).timeout(const Duration(seconds: 15));
 
+      _checkRateLimit(res); // rzuca RateLimitedException jeśli 429
+
       final json = jsonDecode(res.body) as Map<String, dynamic>;
       if (json['ok'] == true) {
         _token = json['token'] as String;
         _user  = DlUser.fromJson(json['user'] as Map<String, dynamic>);
 
-        // Zapisz bezpiecznie
         await _storage.write(key: _kToken, value: _token);
         await _storage.write(key: _kUser,  value: jsonEncode(_user!.toJson()));
 
         notifyListeners();
-
-        // Pobierz licencję od razu po logowaniu
         await fetchLicense();
-
         return (ok: true, error: null);
       }
       return (ok: false, error: json['error'] as String? ?? 'Login failed');
+    } on RateLimitedException {
+      rethrow;
     } on Exception catch (e) {
       return (ok: false, error: 'Network error: $e');
     }

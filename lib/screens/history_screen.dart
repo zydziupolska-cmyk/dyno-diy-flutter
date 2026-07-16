@@ -447,7 +447,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final selected = _runs.where((r) => _selectedRunIds.contains(r.id)).toList();
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => ComparisonScreen(runs: selected)),
+      MaterialPageRoute(builder: (_) => ComparisonScreen(
+        runs: selected,
+        car:  _selectedCar!,
+      )),
     );
   }
 
@@ -745,6 +748,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     builder: (_) => RunDetailScreen(
                                       run: run,
                                       car: _selectedCar!,
+                                      allRuns: _runs,
                                       onExportPdf: () => _exportPdf(run),
                                       onExportPrintPdf: () => _exportPrintPdf(run),
                                       onExportXml: () {
@@ -845,8 +849,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
 //  SZCZEGÓŁY POMIARU
 // ============================================================
 class RunDetailScreen extends StatefulWidget {
-  final DynoRun run;
-  final CarProfile car;
+  final DynoRun      run;
+  final CarProfile   car;
+  final List<DynoRun> allRuns;
   final VoidCallback onExportPdf;
   final VoidCallback onExportPrintPdf;
   final VoidCallback onExportXml;
@@ -855,6 +860,7 @@ class RunDetailScreen extends StatefulWidget {
     super.key,
     required this.run,
     required this.car,
+    required this.allRuns,
     required this.onExportPdf,
     required this.onExportPrintPdf,
     required this.onExportXml,
@@ -866,7 +872,7 @@ class RunDetailScreen extends StatefulWidget {
 
 class _RunDetailScreenState extends State<RunDetailScreen> {
   double _smoothing = 0.0;
-  final GlobalKey _chartKey = GlobalKey(); // do screenshota wykresu
+  final GlobalKey _chartKey = GlobalKey();
 
   // ── Share wykresu jako PNG ────────────────────────────────────
   Future<void> _shareChart() async {
@@ -874,19 +880,15 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
       final boundary = _chartKey.currentContext?.findRenderObject()
           as RenderRepaintBoundary?;
       if (boundary == null) return;
-
-      final image = await boundary.toImage(pixelRatio: 3.0);
-      final byteData = await image.toByteData(
-          format: ui.ImageByteFormat.png);
+      final image    = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
-
       final dir    = await getTemporaryDirectory();
       final run    = widget.run;
       final fname  = 'dynomic_${run.maxEngineHp.toStringAsFixed(0)}hp'
                      '_${run.maxEngineTorque.toStringAsFixed(0)}nm.png';
       final file   = File('${dir.path}/$fname');
       await file.writeAsBytes(byteData.buffer.asUint8List());
-
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'image/png')],
         text: '🏁 ${run.maxEngineHp.toStringAsFixed(1)} HP  ·  '
@@ -899,6 +901,76 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
           SnackBar(content: Text('Share failed: $e')));
       }
     }
+  }
+
+  // ── Compare & Print — wybierz drugi przebieg ─────────────────
+  Future<void> _compareAndPrint() async {
+    // Inne przebiegi do wyboru (bez bieżącego)
+    final others = widget.allRuns
+        .where((r) => r.id != widget.run.id && r.graphDataPoints.isNotEmpty)
+        .toList();
+
+    if (others.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No other runs to compare with')));
+      return;
+    }
+
+    // Dialog wyboru drugiego przebiegu
+    final selected = await showDialog<DynoRun>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1a1a1a),
+        title: const Text('Select run to compare',
+            style: TextStyle(fontSize: 15, color: Colors.white)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: others.length,
+            separatorBuilder: (_, __) =>
+                const Divider(height: 1, color: Color(0xFF2a2a2a)),
+            itemBuilder: (ctx, i) {
+              final r = others[i];
+              return ListTile(
+                dense: true,
+                title: Text(_formatDate(r.timestamp),
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 13)),
+                subtitle: Text(
+                  '${r.maxEngineHp.toStringAsFixed(1)} HP  ·  '
+                  '${r.maxEngineTorque.toStringAsFixed(1)} Nm',
+                  style: const TextStyle(
+                      color: Color(0xFFE51C1C), fontSize: 12)),
+                onTap: () => Navigator.pop(ctx, r),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel',
+                style: TextStyle(color: Colors.grey))),
+        ],
+      ),
+    );
+
+    if (selected == null || !mounted) return;
+
+    // Pobierz ustawienia warsztatu
+    final ws  = await dbService.getWorkshopSettings();
+    final cal = await dbService.getLatestCalibration(widget.car.id);
+
+    final svc = ExportService();
+    await svc.exportComparePdf(
+      runA:     widget.run,
+      runB:     selected,
+      car:      widget.car,
+      workshop: ws,
+      labelA:   _formatDate(widget.run.timestamp),
+      labelB:   _formatDate(selected.timestamp),
+    );
   }
 
   // Zastosuj EMA do listy punktów
@@ -974,6 +1046,11 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.compare_arrows),
+            tooltip: 'Compare & Print',
+            onPressed: _compareAndPrint,
+          ),
           IconButton(
             icon: const Icon(Icons.share),
             tooltip: 'Share chart',
@@ -1219,7 +1296,12 @@ class _StatCard extends StatelessWidget {
 // ============================================================
 class ComparisonScreen extends StatefulWidget {
   final List<DynoRun> runs;
-  const ComparisonScreen({super.key, required this.runs});
+  final CarProfile    car;
+  const ComparisonScreen({
+    super.key,
+    required this.runs,
+    required this.car,
+  });
 
   @override
   State<ComparisonScreen> createState() => _ComparisonScreenState();
@@ -1229,7 +1311,6 @@ class _ComparisonScreenState extends State<ComparisonScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // Kolory dla każdego pomiaru
   static const _colors = [
     Colors.greenAccent,
     Colors.orangeAccent,
@@ -1248,6 +1329,28 @@ class _ComparisonScreenState extends State<ComparisonScreen>
     _tabController.dispose();
     super.dispose();
   }
+
+  // ── Druk porównania ───────────────────────────────────────────
+  Future<void> _printComparison() async {
+    if (widget.runs.length < 2) return;
+    final ws  = await dbService.getWorkshopSettings();
+    final svc = ExportService();
+    await svc.exportComparePdf(
+      runA:     widget.runs[0],
+      runB:     widget.runs[1],
+      car:      widget.car,
+      workshop: ws,
+      labelA:   _formatDate(widget.runs[0].timestamp),
+      labelB:   _formatDate(widget.runs[1].timestamp),
+    );
+  }
+
+  String _formatDate(DateTime dt) =>
+      '${dt.day.toString().padLeft(2,'0')}.'
+      '${dt.month.toString().padLeft(2,'0')}.'
+      '${dt.year}  '
+      '${dt.hour.toString().padLeft(2,'0')}:'
+      '${dt.minute.toString().padLeft(2,'0')}';
 
   List<FlSpot> _parseHpSpots(DynoRun run) {
     final spots = <FlSpot>[];
@@ -1372,14 +1475,22 @@ class _ComparisonScreenState extends State<ComparisonScreen>
         title: const Text('Comparison'),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          if (widget.runs.length == 2)
+            IconButton(
+              icon: const Icon(Icons.print),
+              tooltip: 'Print comparison',
+              onPressed: _printComparison,
+            ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(text: 'Moc (KM)'),
-            Tab(text: 'Moment (Nm)'),
+            Tab(text: 'Power (HP)'),
+            Tab(text: 'Torque (Nm)'),
           ],
-          indicatorColor: Colors.greenAccent,
-          labelColor: Colors.greenAccent,
+          indicatorColor: const Color(0xFFE51C1C),
+          labelColor:     const Color(0xFFE51C1C),
           unselectedLabelColor: Colors.grey,
         ),
       ),
@@ -1443,7 +1554,7 @@ class _ComparisonScreenState extends State<ComparisonScreen>
                                 style: TextStyle(color: Colors.grey),
                               ),
                               Text(
-                                'Wykonaj nowy pomiar z kalibracja.',
+                                'Make a new measurement with calibration.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(color: Colors.grey, fontSize: 12),
                               ),

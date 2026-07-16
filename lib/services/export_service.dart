@@ -636,6 +636,299 @@ class ExportService {
       .replaceAll('&', '&amp;').replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
+  // ── Export PDF z porównaniem dwóch przebiegów (styl Dynomet) ──────────────
+  Future<void> exportComparePdf({
+    required DynoRun runA,
+    required DynoRun runB,
+    required CarProfile car,
+    required WorkshopSettings workshop,
+    String labelA = 'Run 1',
+    String labelB = 'Run 2',
+    double? tempC,
+    double? pressureHpa,
+  }) async {
+    // Parsuj punkty dla obu przebiegów
+    List<_Pt> _parse(DynoRun run, String type) {
+      final pts = <_Pt>[];
+      for (final p in run.graphDataPoints) {
+        final parts = p.split(';');
+        if (parts.length < 2) continue;
+        final rpm = double.tryParse(parts[0]);
+        final hp  = double.tryParse(parts[1]);
+        if (rpm == null || hp == null || rpm <= 0) continue;
+        if (type == 'hp') {
+          pts.add(_Pt(rpm, hp));
+        } else {
+          final savedNm = parts.length >= 3 ? double.tryParse(parts[2]) : null;
+          final nm = (savedNm != null && savedNm > 0)
+              ? savedNm : (hp * 7023.5) / rpm;
+          pts.add(_Pt(rpm, nm));
+        }
+      }
+      pts.sort((a, b) => a.x.compareTo(b.x));
+      return pts;
+    }
+
+    final hpA = _parse(runA, 'hp'), nmA = _parse(runA, 'nm');
+    final hpB = _parse(runB, 'hp'), nmB = _parse(runB, 'nm');
+
+    double _peak(List<_Pt> pts) =>
+        pts.isEmpty ? 0 : pts.reduce((a,b) => a.y > b.y ? a : b).y;
+    double _peakRpm(List<_Pt> pts) =>
+        pts.isEmpty ? 0 : pts.reduce((a,b) => a.y > b.y ? a : b).x;
+
+    final maxHpA = _peak(hpA), maxHpRpmA = _peakRpm(hpA);
+    final maxNmA = _peak(nmA), maxNmRpmA = _peakRpm(nmA);
+    final maxHpB = _peak(hpB), maxHpRpmB = _peakRpm(hpB);
+    final maxNmB = _peak(nmB), maxNmRpmB = _peakRpm(nmB);
+
+    final allHp = [...hpA, ...hpB];
+    final allNm = [...nmA, ...nmB];
+    final minRpm    = allHp.isNotEmpty ? allHp.map((p) => p.x).reduce((a,b) => a<b?a:b) : 1000.0;
+    final maxRpm    = allHp.isNotEmpty ? allHp.map((p) => p.x).reduce((a,b) => a>b?a:b) : 6000.0;
+    final maxHpVal  = allHp.isNotEmpty ? allHp.map((p) => p.y).reduce((a,b) => a>b?a:b) : 100.0;
+    final maxNmVal  = allNm.isNotEmpty ? allNm.map((p) => p.y).reduce((a,b) => a>b?a:b) : 200.0;
+    final maxHpAxis = ((maxHpVal / 20).ceil() * 20.0) + 20;
+    final maxNmAxis = ((maxNmVal / 40).ceil() * 40.0) + 40;
+
+    pw.MemoryImage? logoImg;
+    if (workshop.logoPath != null) {
+      final f = File(workshop.logoPath!);
+      if (await f.exists()) logoImg = pw.MemoryImage(await f.readAsBytes());
+    }
+
+    final pdf  = pw.Document();
+    final font = pw.Font.courier();
+
+    const W = 800.0, H = 290.0;
+    const lm = 42.0, rm = 42.0, tm = 8.0, bm = 22.0;
+    final cw = W - lm - rm;
+    final ch = H - tm - bm;
+
+    double toX(double rpm)  => lm + (rpm  - minRpm)  / (maxRpm  - minRpm)  * cw;
+    double toYhp(double hp) => tm + ch    - (hp  / maxHpAxis) * ch;
+    double toYnm(double nm) => tm + ch    - (nm  / maxNmAxis) * ch;
+
+    String pts2path(List<_Pt> pts, double Function(double) toY) {
+      if (pts.isEmpty) return '';
+      final sb = StringBuffer('M${toX(pts[0].x).toStringAsFixed(1)},${toY(pts[0].y).toStringAsFixed(1)}');
+      for (int i = 1; i < pts.length; i++) {
+        sb.write(' L${toX(pts[i].x).toStringAsFixed(1)},${toY(pts[i].y).toStringAsFixed(1)}');
+      }
+      return sb.toString();
+    }
+
+    // Kolory — styl Dynomet: Run A ciemny, Run B czerwony
+    const colorA_hp = '#8B0000'; // ciemnoczerwony
+    const colorA_nm = '#228B22'; // ciemnozielony
+    const colorB_hp = '#E51C1C'; // jasny czerwony
+    const colorB_nm = '#FFA500'; // pomarańczowy
+
+    final buf = StringBuffer();
+    buf.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 $W $H" width="$W" height="$H">');
+
+    // Tło wykresu
+    buf.write('<rect x="$lm" y="$tm" width="$cw" height="$ch" fill="white" stroke="#888" stroke-width="0.8"/>');
+
+    // Grid pionowe + etykiety X
+    final rpmStep = _niceStep((maxRpm - minRpm) / 8);
+    for (double rpm = _roundUp(minRpm, rpmStep); rpm <= maxRpm; rpm += rpmStep) {
+      final x = toX(rpm);
+      buf.write('<line x1="${x.toStringAsFixed(1)}" y1="$tm" x2="${x.toStringAsFixed(1)}" y2="${(tm+ch).toStringAsFixed(1)}" stroke="#ccc" stroke-width="0.4"/>');
+      buf.write('<text x="${x.toStringAsFixed(1)}" y="${(H-4).toStringAsFixed(1)}" text-anchor="middle" font-size="8" fill="#555" font-family="Courier">${rpm.toStringAsFixed(0)}</text>');
+    }
+    buf.write('<text x="${(lm+cw/2).toStringAsFixed(1)}" y="${(H-1).toStringAsFixed(1)}" text-anchor="middle" font-size="7" fill="#888" font-family="Courier">RPM</text>');
+
+    // Grid poziome + etykiety Y (HP lewa, Nm prawa)
+    final hpStep = _niceStep(maxHpAxis / 6);
+    final nmStep = _niceStep(maxNmAxis / 6);
+    for (double hp = 0; hp <= maxHpAxis; hp += hpStep) {
+      final y = toYhp(hp);
+      buf.write('<line x1="$lm" y1="${y.toStringAsFixed(1)}" x2="${(lm+cw).toStringAsFixed(1)}" y2="${y.toStringAsFixed(1)}" stroke="#ddd" stroke-width="0.4"/>');
+      buf.write('<text x="${(lm-3).toStringAsFixed(1)}" y="${(y+3).toStringAsFixed(1)}" text-anchor="end" font-size="7.5" fill="#555" font-family="Courier">${hp.toStringAsFixed(0)}</text>');
+    }
+    for (double nm = 0; nm <= maxNmAxis; nm += nmStep) {
+      final y = toYnm(nm);
+      buf.write('<text x="${(lm+cw+3).toStringAsFixed(1)}" y="${(y+3).toStringAsFixed(1)}" text-anchor="start" font-size="7.5" fill="#228B22" font-family="Courier">${nm.toStringAsFixed(0)}</text>');
+    }
+    buf.write('<text x="10" y="${(tm+ch/2).toStringAsFixed(1)}" text-anchor="middle" font-size="8" fill="#555" font-family="Courier" transform="rotate(-90 10 ${(tm+ch/2).toStringAsFixed(1)})">Hp</text>');
+    buf.write('<text x="${(W-5).toStringAsFixed(1)}" y="${(tm+ch/2).toStringAsFixed(1)}" text-anchor="middle" font-size="8" fill="#228B22" font-family="Courier" transform="rotate(90 ${(W-5).toStringAsFixed(1)} ${(tm+ch/2).toStringAsFixed(1)})">Nm</text>');
+
+    // Fill pod krzywymi HP
+    final pathA_hp = pts2path(hpA, toYhp);
+    final pathB_hp = pts2path(hpB, toYhp);
+    if (pathA_hp.isNotEmpty) {
+      buf.write('<path d="$pathA_hp L${toX(hpA.last.x).toStringAsFixed(1)},${(tm+ch).toStringAsFixed(1)} L${toX(hpA.first.x).toStringAsFixed(1)},${(tm+ch).toStringAsFixed(1)} Z" fill="${colorA_hp}18"/>');
+    }
+    if (pathB_hp.isNotEmpty) {
+      buf.write('<path d="$pathB_hp L${toX(hpB.last.x).toStringAsFixed(1)},${(tm+ch).toStringAsFixed(1)} L${toX(hpB.first.x).toStringAsFixed(1)},${(tm+ch).toStringAsFixed(1)} Z" fill="${colorB_hp}18"/>');
+    }
+
+    // Krzywe Nm
+    final pathA_nm = pts2path(nmA, toYnm);
+    final pathB_nm = pts2path(nmB, toYnm);
+    if (pathA_nm.isNotEmpty) buf.write('<path d="$pathA_nm" fill="none" stroke="$colorA_nm" stroke-width="1.4"/>');
+    if (pathB_nm.isNotEmpty) buf.write('<path d="$pathB_nm" fill="none" stroke="$colorB_nm" stroke-width="1.4"/>');
+
+    // Krzywe HP (na wierzchu)
+    if (pathA_hp.isNotEmpty) buf.write('<path d="$pathA_hp" fill="none" stroke="$colorA_hp" stroke-width="1.8"/>');
+    if (pathB_hp.isNotEmpty) buf.write('<path d="$pathB_hp" fill="none" stroke="$colorB_hp" stroke-width="1.8"/>');
+
+    // Peak markery — pionowe linie z etykietami
+    void _addPeakLine(double rpm, double hp, String color, String label) {
+      final x = toX(rpm); final y = toYhp(hp);
+      buf.write('<line x1="${x.toStringAsFixed(1)}" y1="$tm" x2="${x.toStringAsFixed(1)}" y2="${(tm+ch).toStringAsFixed(1)}" stroke="$color" stroke-width="0.8" stroke-dasharray="3,2"/>');
+      buf.write('<circle cx="${x.toStringAsFixed(1)}" cy="${y.toStringAsFixed(1)}" r="2.5" fill="$color"/>');
+    }
+    if (hpA.isNotEmpty) _addPeakLine(maxHpRpmA, maxHpA, colorA_hp, labelA);
+    if (hpB.isNotEmpty) _addPeakLine(maxHpRpmB, maxHpB, colorB_hp, labelB);
+
+    buf.write('</svg>');
+    final chartSvgStr = buf.toString();
+
+    // Δ różnice
+    final deltaHp = maxHpB - maxHpA;
+    final deltaNm = maxNmB - maxNmA;
+    final deltaSign = (v) => v >= 0 ? '+${v.toStringAsFixed(1)}' : v.toStringAsFixed(1);
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.fromLTRB(16, 12, 16, 12),
+        build: (ctx) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            // Nagłówek
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                  pw.Text(_ascii(car.name),
+                      style: pw.TextStyle(font: font, fontSize: 13,
+                          fontWeight: pw.FontWeight.bold)),
+                  if (car.licensePlate != null)
+                    pw.Text(_ascii(car.licensePlate!),
+                        style: pw.TextStyle(font: font, fontSize: 9,
+                            color: PdfColors.grey600)),
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    'Air press  ${pressureHpa?.toStringAsFixed(0) ?? "-"} hPa'
+                    '     Air temp  ${tempC?.toStringAsFixed(1) ?? "-"} deg C',
+                    style: pw.TextStyle(font: font, fontSize: 8,
+                        color: PdfColors.grey700)),
+                ]),
+                pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+                  pw.Text('DIN 70020',
+                      style: pw.TextStyle(font: font, fontSize: 8,
+                          color: PdfColors.grey700)),
+                  pw.Text(_fmtDate(runB.timestamp),
+                      style: pw.TextStyle(font: font, fontSize: 8,
+                          color: PdfColors.grey700)),
+                ]),
+              ],
+            ),
+            pw.SizedBox(height: 3),
+
+            // Peak legenda — 2 wiersze jak na screenie Dynomet
+            pw.Row(children: [
+              pw.Text('${maxHpA.toStringAsFixed(1)} Hp / ${maxHpRpmA.toStringAsFixed(0)} Rpm',
+                  style: pw.TextStyle(font: font, fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColor.fromHex('8B0000'))),
+              pw.SizedBox(width: 20),
+              pw.Text('${maxNmA.toStringAsFixed(1)} Nm / ${maxNmRpmA.toStringAsFixed(0)} Rpm',
+                  style: pw.TextStyle(font: font, fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColor.fromHex('228B22'))),
+              pw.SizedBox(width: 30),
+              pw.Text('[$labelA]',
+                  style: pw.TextStyle(font: font, fontSize: 8,
+                      color: PdfColors.grey600)),
+            ]),
+            pw.SizedBox(height: 2),
+            pw.Row(children: [
+              pw.Text('${maxHpB.toStringAsFixed(1)} Hp / ${maxHpRpmB.toStringAsFixed(0)} Rpm',
+                  style: pw.TextStyle(font: font, fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColor.fromHex('E51C1C'))),
+              pw.SizedBox(width: 20),
+              pw.Text('${maxNmB.toStringAsFixed(1)} Nm / ${maxNmRpmB.toStringAsFixed(0)} Rpm',
+                  style: pw.TextStyle(font: font, fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColor.fromHex('FFA500'))),
+              pw.SizedBox(width: 30),
+              pw.Text('[$labelB]',
+                  style: pw.TextStyle(font: font, fontSize: 8,
+                      color: PdfColors.grey600)),
+            ]),
+            pw.SizedBox(height: 2),
+            pw.Row(children: [
+              pw.Text('Delta:  Hp ${deltaSign(deltaHp)}    Nm ${deltaSign(deltaNm)}',
+                  style: pw.TextStyle(font: font, fontSize: 8,
+                      color: deltaHp >= 0 ? PdfColors.green800 : PdfColors.red800)),
+            ]),
+            pw.SizedBox(height: 3),
+
+            // Wykres
+            pw.Expanded(
+              child: pw.SvgImage(svg: chartSvgStr),
+            ),
+
+            pw.SizedBox(height: 4),
+
+            // Stopka
+            pw.Container(
+              decoration: const pw.BoxDecoration(
+                border: pw.Border(
+                    top: pw.BorderSide(color: PdfColors.grey400, width: 0.5)),
+              ),
+              padding: const pw.EdgeInsets.only(top: 4),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Row(children: [
+                    if (logoImg != null) ...[
+                      pw.Image(logoImg, height: 20, width: 20,
+                          fit: pw.BoxFit.contain),
+                      pw.SizedBox(width: 6),
+                    ],
+                    pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          if (workshop.name.isNotEmpty)
+                            pw.Text(workshop.name,
+                                style: pw.TextStyle(font: font, fontSize: 9,
+                                    fontWeight: pw.FontWeight.bold)),
+                          pw.Text(
+                            [
+                              if (workshop.phone.isNotEmpty)
+                                'tel. ${_ascii(workshop.phone)}',
+                              if (workshop.website.isNotEmpty)
+                                _ascii(workshop.website),
+                            ].join('  ·  '),
+                            style: pw.TextStyle(font: font, fontSize: 8,
+                                color: PdfColors.grey600)),
+                        ]),
+                  ]),
+                  pw.Text('GPS Dyno Comparison · Dynomic',
+                      style: pw.TextStyle(font: font, fontSize: 8,
+                          color: PdfColors.grey500)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final dir   = await getTemporaryDirectory();
+    final name  = car.name.replaceAll(' ', '_');
+    final file  = File('${dir.path}/dyno_compare_${name}_${DateTime.now().millisecondsSinceEpoch}.pdf');
+    await file.writeAsBytes(await pdf.save());
+    await Share.shareXFiles([XFile(file.path)],
+        subject: 'Dynomic – ${car.name} – comparison');
+  }
+
   String _ascii(String s) => s
       .replaceAll('ą','a').replaceAll('ć','c').replaceAll('ę','e')
       .replaceAll('ł','l').replaceAll('ń','n').replaceAll('ó','o')
@@ -643,11 +936,8 @@ class ExportService {
       .replaceAll('Ą','A').replaceAll('Ć','C').replaceAll('Ę','E')
       .replaceAll('Ł','L').replaceAll('Ń','N').replaceAll('Ó','O')
       .replaceAll('Ś','S').replaceAll('Ź','Z').replaceAll('Ż','Z')
-      // znaki spoza Latin-1 które pdf/courier nie obsługuje:
-      .replaceAll('°','°'.codeUnitAt(0) > 127 ? 'deg' : '°')
-      .replaceAll('—', '-').replaceAll('–', '-')
+      .replaceAll('°','deg').replaceAll('—', '-').replaceAll('–', '-')
       .replaceAll('×', 'x').replaceAll('·', '.')
-      // fallback: usuń wszystko powyżej ASCII 127
       .replaceAll(RegExp(r'[^\x00-\x7F]'), '?');
 
   String _fmtDate(DateTime dt) =>
