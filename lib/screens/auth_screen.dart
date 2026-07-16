@@ -1,10 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_service.dart';
 
-/// Ekran autoryzacji — logowanie i rejestracja w jednym ekranie z zakładkami.
-/// Wyświetlany przy starcie jeśli user nie jest zalogowany.
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -38,10 +37,7 @@ class _AuthScreenState extends State<AuthScreen>
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 40, 24, 0),
             child: Row(children: [
-              Image.asset(
-                'assets/images/logo.png',
-                width: 44, height: 44,
-              ),
+              Image.asset('assets/images/logo.png', width: 44, height: 44),
               const SizedBox(width: 12),
               const Text('Dynomic',
                   style: TextStyle(
@@ -70,10 +66,7 @@ class _AuthScreenState extends State<AuthScreen>
                 labelStyle: const TextStyle(
                     fontWeight: FontWeight.w700, fontSize: 14),
                 dividerColor: Colors.transparent,
-                tabs: const [
-                  Tab(text: 'Log in'),
-                  Tab(text: 'Register'),
-                ],
+                tabs: const [Tab(text: 'Log in'), Tab(text: 'Register')],
               ),
             ),
           ),
@@ -82,10 +75,7 @@ class _AuthScreenState extends State<AuthScreen>
           Expanded(
             child: TabBarView(
               controller: _tab,
-              children: const [
-                _LoginForm(),
-                _RegisterForm(),
-              ],
+              children: const [_LoginForm(), _RegisterForm()],
             ),
           ),
         ]),
@@ -99,7 +89,6 @@ class _AuthScreenState extends State<AuthScreen>
 // ══════════════════════════════════════════════════════════════
 class _LoginForm extends StatefulWidget {
   const _LoginForm();
-
   @override
   State<_LoginForm> createState() => _LoginFormState();
 }
@@ -107,18 +96,39 @@ class _LoginForm extends StatefulWidget {
 class _LoginFormState extends State<_LoginForm> {
   final _emailCtrl    = TextEditingController();
   final _passwordCtrl = TextEditingController();
-  bool  _loading      = false;
-  bool  _showPwd      = false;
+  bool    _loading    = false;
+  bool    _showPwd    = false;
   String? _error;
+
+  // Rate limiting
+  int    _rateLimitSecs = 0;
+  Timer? _rateLimitTimer;
 
   @override
   void dispose() {
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
+    _rateLimitTimer?.cancel();
     super.dispose();
   }
 
+  void _startCountdown(int seconds) {
+    _rateLimitTimer?.cancel();
+    setState(() => _rateLimitSecs = seconds);
+    _rateLimitTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      if (_rateLimitSecs <= 1) {
+        t.cancel();
+        setState(() => _rateLimitSecs = 0);
+      } else {
+        setState(() => _rateLimitSecs--);
+      }
+    });
+  }
+
   Future<void> _submit() async {
+    if (_rateLimitSecs > 0) return;
+
     final email    = _emailCtrl.text.trim();
     final password = _passwordCtrl.text;
 
@@ -129,20 +139,24 @@ class _LoginFormState extends State<_LoginForm> {
 
     setState(() { _loading = true; _error = null; });
 
-    final auth   = context.read<AuthService>();
-    final result = await auth.login(email: email, password: password);
-
-    if (!mounted) return;
-    setState(() => _loading = false);
-
-    if (!result.ok) {
-      setState(() => _error = result.error);
+    try {
+      final auth   = context.read<AuthService>();
+      final result = await auth.login(email: email, password: password);
+      if (!mounted) return;
+      setState(() => _loading = false);
+      if (!result.ok) setState(() => _error = result.error);
+      // Jeśli OK — AuthService.notifyListeners() przebuduje root
+    } on RateLimitedException catch (e) {
+      if (!mounted) return;
+      setState(() { _loading = false; _error = null; });
+      _startCountdown(e.retryAfterSeconds);
     }
-    // Jeśli OK — root widget przebuduje się sam (AuthService notifyListeners)
   }
 
   @override
   Widget build(BuildContext context) {
+    final blocked = _rateLimitSecs > 0;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -150,23 +164,21 @@ class _LoginFormState extends State<_LoginForm> {
         children: [
           const SizedBox(height: 24),
           const Text('Welcome back',
-              style: TextStyle(
-                  fontSize: 22, fontWeight: FontWeight.w800,
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
                   color: Colors.white)),
           const SizedBox(height: 6),
           const Text('Log in to your Dynomic account',
               style: TextStyle(color: Colors.grey, fontSize: 14)),
           const SizedBox(height: 28),
 
-          if (_error != null)
+          if (blocked)
+            _RateLimitBanner(_rateLimitSecs),
+
+          if (!blocked && _error != null)
             _ErrorBanner(_error!),
 
-          _Field(
-            label: 'Email',
-            controller: _emailCtrl,
-            keyboard: TextInputType.emailAddress,
-            hint: 'jan@example.com',
-          ),
+          _Field(label: 'Email', controller: _emailCtrl,
+              keyboard: TextInputType.emailAddress, hint: 'jan@example.com'),
 
           _Field(
             label: 'Password',
@@ -182,20 +194,23 @@ class _LoginFormState extends State<_LoginForm> {
 
           const SizedBox(height: 8),
           _PrimaryButton(
-            label:   'Log in',
-            loading: _loading,
-            onTap:   _submit,
+            label:    blocked
+                ? 'Try again in ${_rateLimitSecs}s'
+                : 'Log in',
+            loading:  _loading,
+            disabled: blocked,
+            onTap:    _submit,
           ),
 
           const SizedBox(height: 16),
           Center(
             child: TextButton(
               onPressed: () async {
-                // Otwórz stronę resetu hasła
                 final uri = Uri.parse('https://dynomic.pro/forgot');
                 // ignore: deprecated_member_use
-                if (await canLaunchUrl(uri)) launchUrl(uri,
-                  mode: LaunchMode.externalApplication);
+                if (await canLaunchUrl(uri)) {
+                  launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
               },
               child: const Text('Forgot password?',
                   style: TextStyle(color: Color(0xFFE51C1C))),
@@ -212,7 +227,6 @@ class _LoginFormState extends State<_LoginForm> {
 // ══════════════════════════════════════════════════════════════
 class _RegisterForm extends StatefulWidget {
   const _RegisterForm();
-
   @override
   State<_RegisterForm> createState() => _RegisterFormState();
 }
@@ -223,29 +237,50 @@ class _RegisterFormState extends State<_RegisterForm> {
   final _emailCtrl    = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _serialCtrl   = TextEditingController();
-  bool _loading       = false;
-  bool _showPwd       = false;
-  bool _measUpload    = false;
-  bool _terms         = false;
+  bool    _loading    = false;
+  bool    _showPwd    = false;
+  bool    _measUpload = false;
+  bool    _terms      = false;
   String? _error;
   String? _success;
+
+  // Rate limiting
+  int    _rateLimitSecs = 0;
+  Timer? _rateLimitTimer;
 
   @override
   void dispose() {
     _firstCtrl.dispose(); _lastCtrl.dispose();
     _emailCtrl.dispose(); _passwordCtrl.dispose();
     _serialCtrl.dispose();
+    _rateLimitTimer?.cancel();
     super.dispose();
   }
 
+  void _startCountdown(int seconds) {
+    _rateLimitTimer?.cancel();
+    setState(() => _rateLimitSecs = seconds);
+    _rateLimitTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      if (_rateLimitSecs <= 1) {
+        t.cancel();
+        setState(() => _rateLimitSecs = 0);
+      } else {
+        setState(() => _rateLimitSecs--);
+      }
+    });
+  }
+
   Future<void> _submit() async {
+    if (_rateLimitSecs > 0) return;
+
     final firstName = _firstCtrl.text.trim();
     final email     = _emailCtrl.text.trim();
     final password  = _passwordCtrl.text;
     final serial    = _serialCtrl.text.trim().toUpperCase();
 
     if (firstName.isEmpty || email.isEmpty ||
-        password.isEmpty || serial.isEmpty) {
+        password.isEmpty  || serial.isEmpty) {
       setState(() => _error = 'Please fill in all required fields');
       return;
     }
@@ -264,29 +299,37 @@ class _RegisterFormState extends State<_RegisterForm> {
 
     setState(() { _loading = true; _error = null; _success = null; });
 
-    final auth   = context.read<AuthService>();
-    final result = await auth.register(
-      email:               email,
-      password:            password,
-      firstName:           firstName,
-      lastName:            _lastCtrl.text.trim(),
-      serial:              serial,
-      measurementsUpload:  _measUpload,
-    );
+    try {
+      final auth   = context.read<AuthService>();
+      final result = await auth.register(
+        email:              email,
+        password:           password,
+        firstName:          firstName,
+        lastName:           _lastCtrl.text.trim(),
+        serial:             serial,
+        measurementsUpload: _measUpload,
+      );
 
-    if (!mounted) return;
-    setState(() => _loading = false);
+      if (!mounted) return;
+      setState(() => _loading = false);
 
-    if (result.ok) {
-      setState(() => _success =
-          'Account created! Check your email to verify, then log in.');
-    } else {
-      setState(() => _error = result.error);
+      if (result.ok) {
+        setState(() => _success =
+            'Account created! Check your email to verify, then log in.');
+      } else {
+        setState(() => _error = result.error);
+      }
+    } on RateLimitedException catch (e) {
+      if (!mounted) return;
+      setState(() { _loading = false; _error = null; });
+      _startCountdown(e.retryAfterSeconds);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final blocked = _rateLimitSecs > 0;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -294,15 +337,19 @@ class _RegisterFormState extends State<_RegisterForm> {
         children: [
           const SizedBox(height: 24),
           const Text('Register your device',
-              style: TextStyle(
-                  fontSize: 22, fontWeight: FontWeight.w800,
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
                   color: Colors.white)),
           const SizedBox(height: 6),
           const Text('Create an account and pair your hardware',
               style: TextStyle(color: Colors.grey, fontSize: 14)),
           const SizedBox(height: 28),
 
-          if (_error   != null) _ErrorBanner(_error!),
+          if (blocked)
+            _RateLimitBanner(_rateLimitSecs),
+
+          if (!blocked && _error != null)
+            _ErrorBanner(_error!),
+
           if (_success != null)
             Container(
               width: double.infinity,
@@ -314,7 +361,8 @@ class _RegisterFormState extends State<_RegisterForm> {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(_success!,
-                  style: const TextStyle(color: Color(0xFF86EFAC), fontSize: 13)),
+                  style: const TextStyle(
+                      color: Color(0xFF86EFAC), fontSize: 13)),
             ),
 
           Row(children: [
@@ -347,14 +395,12 @@ class _RegisterFormState extends State<_RegisterForm> {
             uppercase: true,
           ),
 
-          // Opt-in pomiary
           _CheckRow(
             value: _measUpload,
             onChanged: (v) => setState(() => _measUpload = v),
             label: 'Allow cloud backup of my measurements (optional)',
           ),
 
-          // Regulamin
           _CheckRow(
             value: _terms,
             onChanged: (v) => setState(() => _terms = v),
@@ -365,9 +411,12 @@ class _RegisterFormState extends State<_RegisterForm> {
 
           const SizedBox(height: 8),
           _PrimaryButton(
-            label:   'Create account & pair device',
-            loading: _loading,
-            onTap:   _submit,
+            label:    blocked
+                ? 'Try again in ${_rateLimitSecs}s'
+                : 'Create account & pair device',
+            loading:  _loading,
+            disabled: blocked,
+            onTap:    _submit,
           ),
           const SizedBox(height: 24),
         ],
@@ -379,6 +428,36 @@ class _RegisterFormState extends State<_RegisterForm> {
 // ══════════════════════════════════════════════════════════════
 //  HELPER WIDGETS
 // ══════════════════════════════════════════════════════════════
+
+class _RateLimitBanner extends StatelessWidget {
+  final int seconds;
+  const _RateLimitBanner(this.seconds);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE51C1C).withValues(alpha: .08),
+        border: Border.all(color: const Color(0xFFE51C1C).withValues(alpha: .35)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(children: [
+        const Icon(Icons.timer_outlined, color: Color(0xFFE51C1C), size: 18),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'Too many attempts. Try again in ${seconds}s.',
+            style: const TextStyle(color: Color(0xFFFF8080), fontSize: 13),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
 class _Field extends StatelessWidget {
   final String label;
   final TextEditingController controller;
@@ -393,7 +472,7 @@ class _Field extends StatelessWidget {
     required this.controller,
     this.keyboard,
     this.hint,
-    this.obscure  = false,
+    this.obscure   = false,
     this.uppercase = false,
     this.suffix,
   });
@@ -411,32 +490,29 @@ class _Field extends StatelessWidget {
                   color: Colors.white70)),
           const SizedBox(height: 7),
           TextField(
-            controller:    controller,
-            keyboardType:  keyboard,
-            obscureText:   obscure,
+            controller: controller,
+            keyboardType: keyboard,
+            obscureText: obscure,
             textCapitalization: uppercase
                 ? TextCapitalization.characters
                 : TextCapitalization.none,
             style: const TextStyle(color: Colors.white, fontSize: 15),
             decoration: InputDecoration(
-              hintText:       hint,
+              hintText: hint,
               hintStyle: const TextStyle(color: Colors.grey),
-              suffixIcon:     suffix,
-              filled:         true,
+              suffixIcon: suffix,
+              filled: true,
               fillColor: const Color(0xFF1A1A1A),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Colors.white12),
-              ),
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Colors.white12)),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Colors.white12),
-              ),
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Colors.white12)),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(
-                    color: Color(0xFFE51C1C), width: 1.5),
-              ),
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(
+                      color: Color(0xFFE51C1C), width: 1.5)),
               contentPadding: const EdgeInsets.symmetric(
                   horizontal: 14, vertical: 13),
             ),
@@ -448,14 +524,16 @@ class _Field extends StatelessWidget {
 }
 
 class _PrimaryButton extends StatelessWidget {
-  final String label;
-  final bool   loading;
+  final String       label;
+  final bool         loading;
+  final bool         disabled;
   final VoidCallback onTap;
 
   const _PrimaryButton({
     required this.label,
     required this.loading,
     required this.onTap,
+    this.disabled = false,
   });
 
   @override
@@ -464,7 +542,7 @@ class _PrimaryButton extends StatelessWidget {
       width: double.infinity,
       height: 50,
       child: ElevatedButton(
-        onPressed: loading ? null : onTap,
+        onPressed: (loading || disabled) ? null : onTap,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFE51C1C),
           disabledBackgroundColor: const Color(0xFF8B1010),
@@ -510,7 +588,7 @@ class _ErrorBanner extends StatelessWidget {
 class _CheckRow extends StatelessWidget {
   final bool   value;
   final void Function(bool) onChanged;
-  final String label;
+  final String  label;
   final String? linkText;
   final String? linkUrl;
 
@@ -530,8 +608,8 @@ class _CheckRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Checkbox(
-            value:           value,
-            onChanged:       (v) => onChanged(v ?? false),
+            value: value,
+            onChanged: (v) => onChanged(v ?? false),
             activeColor: const Color(0xFFE51C1C),
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
