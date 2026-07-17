@@ -17,12 +17,16 @@ class DynoScreen extends StatefulWidget {
   final double? overrideWeight;
   final double weatherCf;
   final double? kFactor;
+  final double? tempC;
+  final double? pressureHpa;
   const DynoScreen({
     super.key,
     required this.car,
     this.overrideWeight,
     this.weatherCf = 1.0,
     this.kFactor,
+    this.tempC,
+    this.pressureHpa,
   });
 
   @override
@@ -388,6 +392,8 @@ class _DynoScreenState extends State<DynoScreen> {
       sessionWeightKg:  _weight,
       correctionFactor: widget.weatherCf,
       graphDataPoints:  dataPoints,
+      tempC:            widget.tempC,
+      pressureHpa:      widget.pressureHpa,
     );
     await dbService.saveRun(run);
     if (!mounted) return;

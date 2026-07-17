@@ -251,8 +251,9 @@ class ExportService {
                             color: PdfColors.grey600)),
                   pw.SizedBox(height: 3),
                   pw.Text(
-                    'Air press   ${pressureHpa?.toStringAsFixed(0) ?? "-"} hPa\n'
-                    'Air temp    ${tempC?.toStringAsFixed(1) ?? "-"} deg C',
+                    'Air press   ${pressureHpa?.toStringAsFixed(0) ?? (run.pressureHpa?.toStringAsFixed(0) ?? "-")} hPa\n'
+                    'Air temp    ${tempC?.toStringAsFixed(1) ?? (run.tempC?.toStringAsFixed(1) ?? "-")} deg C\n'
+                    'Weight      ${run.sessionWeightKg.toStringAsFixed(0)} kg',
                     style: pw.TextStyle(font: font, fontSize: 8,
                         color: PdfColors.grey700),
                   ),
@@ -380,8 +381,9 @@ class ExportService {
     required double maxNm, required double maxNmRpm,
     String workshopName = '',
   }) {
+    // Identyczny styl jak compare PDF — Dynomet look
     const W = 800.0, H = 300.0;
-    const lm = 40.0, rm = 40.0, tm = 8.0, bm = 22.0;
+    const lm = 48.0, rm = 48.0, tm = 10.0, bm = 26.0;
     final cw = W - lm - rm;
     final ch = H - tm - bm;
 
@@ -393,112 +395,98 @@ class ExportService {
     buf.write('<svg xmlns="http://www.w3.org/2000/svg" '
         'viewBox="0 0 $W $H" width="$W" height="$H">');
 
-    // Tło
-    buf.write('<rect x="$lm" y="$tm" width="$cw" height="$ch" '
-        'fill="white" stroke="#aaa" stroke-width="0.8"/>');
+    // Białe tło z ramką
+    buf.write('<rect x="0" y="0" width="$W" height="$H" fill="white"/>');
+    buf.write('<rect x="$lm" y="$tm" width="${cw.toStringAsFixed(1)}" height="${ch.toStringAsFixed(1)}" '
+        'fill="white" stroke="#333" stroke-width="1.0"/>');
 
-    // Grid pionowe
-    final rpmRange = maxRpm - minRpm;
-    final rpmStep  = _niceStep(rpmRange / 6);
-    for (double rpm = _roundUp(minRpm, rpmStep); rpm <= maxRpm; rpm += rpmStep) {
+    // ── Siatka pionowa (8 podziałów) ──
+    final rpmStep = _niceStep((maxRpm - minRpm) / 8);
+    for (double rpm = _roundUp(minRpm, rpmStep); rpm <= maxRpm + 1; rpm += rpmStep) {
       final x = toX(rpm);
-      buf.write('<line x1="${x.toStringAsFixed(1)}" y1="$tm" '
+      if (x < lm || x > lm + cw + 1) continue;
+      buf.write('<line x1="${x.toStringAsFixed(1)}" y1="${tm.toStringAsFixed(1)}" '
           'x2="${x.toStringAsFixed(1)}" y2="${(tm+ch).toStringAsFixed(1)}" '
-          'stroke="#ddd" stroke-width="0.4"/>');
-      buf.write('<text x="${x.toStringAsFixed(1)}" '
-          'y="${(H-4).toStringAsFixed(1)}" '
-          'text-anchor="middle" font-size="8" fill="#555" font-family="Courier">'
+          'stroke="#bbb" stroke-width="0.5"/>');
+      buf.write('<text x="${x.toStringAsFixed(1)}" y="${(tm+ch+14).toStringAsFixed(1)}" '
+          'text-anchor="middle" font-size="10" font-weight="bold" fill="#222" font-family="Courier">'
           '${rpm.toStringAsFixed(0)}</text>');
     }
+    buf.write('<text x="${(lm+cw/2).toStringAsFixed(1)}" y="${(H-2).toStringAsFixed(1)}" '
+        'text-anchor="middle" font-size="9" fill="#555" font-family="Courier">RPM</text>');
 
-    // Grid poziome + etykiety
-    final hpStep = _niceStep(maxHpAxis / 5);
-    for (double hp = 0; hp <= maxHpAxis; hp += hpStep) {
+    // ── Siatka pozioma HP (lewa oś, czerwona) ──
+    final hpStep = _niceStep(maxHpAxis / 8);
+    for (double hp = 0; hp <= maxHpAxis + 1; hp += hpStep) {
       final y = toYhp(hp);
-      buf.write('<line x1="$lm" y1="${y.toStringAsFixed(1)}" '
+      if (y < tm - 1 || y > tm + ch + 1) continue;
+      buf.write('<line x1="${lm.toStringAsFixed(1)}" y1="${y.toStringAsFixed(1)}" '
           'x2="${(lm+cw).toStringAsFixed(1)}" y2="${y.toStringAsFixed(1)}" '
-          'stroke="#ddd" stroke-width="0.4"/>');
-      // Hp (lewa)
-      buf.write('<text x="${(lm-3).toStringAsFixed(1)}" '
-          'y="${(y+3).toStringAsFixed(1)}" '
-          'text-anchor="end" font-size="8" fill="#c0392b" font-family="Courier">'
+          'stroke="#bbb" stroke-width="0.5"/>');
+      buf.write('<text x="${(lm-5).toStringAsFixed(1)}" y="${(y+4).toStringAsFixed(1)}" '
+          'text-anchor="end" font-size="10" font-weight="bold" fill="#8B0000" font-family="Courier">'
           '${hp.toStringAsFixed(0)}</text>');
-      // Nm (prawa)
-      final nm = hp / maxHpAxis * maxNmAxis;
-      buf.write('<text x="${(lm+cw+3).toStringAsFixed(1)}" '
-          'y="${(y+3).toStringAsFixed(1)}" '
-          'font-size="8" fill="#27ae60" font-family="Courier">'
+    }
+    buf.write('<text x="10" y="${(tm+ch/2).toStringAsFixed(1)}" '
+        'text-anchor="middle" font-size="10" font-weight="bold" fill="#8B0000" font-family="Courier" '
+        'transform="rotate(-90 10 ${(tm+ch/2).toStringAsFixed(1)})">Hp</text>');
+
+    // ── Siatka pozioma Nm (prawa oś, zielona) ──
+    final nmStep = _niceStep(maxNmAxis / 8);
+    for (double nm = 0; nm <= maxNmAxis + 1; nm += nmStep) {
+      final y = toYnm(nm);
+      if (y < tm - 1 || y > tm + ch + 1) continue;
+      buf.write('<text x="${(lm+cw+5).toStringAsFixed(1)}" y="${(y+4).toStringAsFixed(1)}" '
+          'text-anchor="start" font-size="10" font-weight="bold" fill="#006400" font-family="Courier">'
           '${nm.toStringAsFixed(0)}</text>');
     }
+    buf.write('<text x="${(W-8).toStringAsFixed(1)}" y="${(tm+ch/2).toStringAsFixed(1)}" '
+        'text-anchor="middle" font-size="10" font-weight="bold" fill="#006400" font-family="Courier" '
+        'transform="rotate(90 ${(W-8).toStringAsFixed(1)} ${(tm+ch/2).toStringAsFixed(1)})">Nm</text>');
 
-    // Etykieta osi X
-    buf.write('<text x="${(lm+cw/2).toStringAsFixed(1)}" '
-        'y="${(H-2).toStringAsFixed(1)}" '
-        'text-anchor="middle" font-size="8" fill="#666" font-family="Courier">'
-        'RPM</text>');
-
-    // Watermark - tekst (logo wstawiamy przez pw.Stack nad SVG)
-    // Tylko jeśli nie ma logo - fallback tekstowy
+    // Watermark tekstowy (fallback gdy brak logo)
     if (workshopName.isNotEmpty) {
-      final wm = workshopName.toUpperCase();
       buf.write('<text x="${(lm+cw/2).toStringAsFixed(1)}" '
           'y="${(tm+ch/2+10).toStringAsFixed(1)}" '
           'text-anchor="middle" font-size="22" fill="#bbb" '
           'fill-opacity="0.25" font-family="Courier" font-weight="bold">'
-          '$wm</text>');
+          '${workshopName.toUpperCase()}</text>');
     }
 
-    // ── Krzywa Nm (zielona) — pod HP ──
+    // ── Krzywe — bez fillów, identycznie jak compare ──
     if (nmPts.length > 1) {
       final polyNm = nmPts.map((p) =>
           '${toX(p.x).toStringAsFixed(1)},${toYnm(p.y).toStringAsFixed(1)}').join(' ');
-      final fillNm =
-          '${toX(nmPts.first.x).toStringAsFixed(1)},${(tm+ch).toStringAsFixed(1)} '
-          '$polyNm '
-          '${toX(nmPts.last.x).toStringAsFixed(1)},${(tm+ch).toStringAsFixed(1)}';
-      buf.write('<polygon points="$fillNm" fill="#27ae60" fill-opacity="0.08"/>');
       buf.write('<polyline points="$polyNm" fill="none" '
-          'stroke="#27ae60" stroke-width="1.8" '
+          'stroke="#006400" stroke-width="1.8" '
           'stroke-linejoin="round" stroke-linecap="round"/>');
     }
-
-    // ── Krzywa HP (czerwona) — na wierzchu ──
     if (hpPts.length > 1) {
       final polyHp = hpPts.map((p) =>
           '${toX(p.x).toStringAsFixed(1)},${toYhp(p.y).toStringAsFixed(1)}').join(' ');
-      final fillHp =
-          '${toX(hpPts.first.x).toStringAsFixed(1)},${(tm+ch).toStringAsFixed(1)} '
-          '$polyHp '
-          '${toX(hpPts.last.x).toStringAsFixed(1)},${(tm+ch).toStringAsFixed(1)}';
-      buf.write('<polygon points="$fillHp" fill="#c0392b" fill-opacity="0.08"/>');
       buf.write('<polyline points="$polyHp" fill="none" '
-          'stroke="#c0392b" stroke-width="2" '
+          'stroke="#8B0000" stroke-width="1.8" '
           'stroke-linejoin="round" stroke-linecap="round"/>');
     }
 
-    // Marker peak HP
+    // ── Peak markery — krótka belka ±12px (styl Dynomet) ──
     if (maxHpRpm > 0) {
       final x = toX(maxHpRpm); final y = toYhp(maxHp);
-      buf.write('<line x1="${x.toStringAsFixed(1)}" y1="$tm" '
-          'x2="${x.toStringAsFixed(1)}" y2="${(tm+ch).toStringAsFixed(1)}" '
-          'stroke="#c0392b" stroke-width="0.6" stroke-dasharray="4,3"/>');
-      buf.write('<circle cx="${x.toStringAsFixed(1)}" cy="${y.toStringAsFixed(1)}" '
-          'r="3.5" fill="#c0392b"/>');
+      buf.write('<line x1="${x.toStringAsFixed(1)}" y1="${(y-12).toStringAsFixed(1)}" '
+          'x2="${x.toStringAsFixed(1)}" y2="${(y+12).toStringAsFixed(1)}" '
+          'stroke="#8B0000" stroke-width="1.5"/>');
     }
-
-    // Marker peak Nm
     if (maxNmRpm > 0) {
       final x = toX(maxNmRpm); final y = toYnm(maxNm);
-      buf.write('<line x1="${x.toStringAsFixed(1)}" y1="$tm" '
-          'x2="${x.toStringAsFixed(1)}" y2="${(tm+ch).toStringAsFixed(1)}" '
-          'stroke="#27ae60" stroke-width="0.6" stroke-dasharray="4,3"/>');
-      buf.write('<circle cx="${x.toStringAsFixed(1)}" cy="${y.toStringAsFixed(1)}" '
-          'r="3.5" fill="#27ae60"/>');
+      buf.write('<line x1="${x.toStringAsFixed(1)}" y1="${(y-12).toStringAsFixed(1)}" '
+          'x2="${x.toStringAsFixed(1)}" y2="${(y+12).toStringAsFixed(1)}" '
+          'stroke="#006400" stroke-width="1.5"/>');
     }
 
-    // Ramka
-    buf.write('<rect x="$lm" y="$tm" width="$cw" height="$ch" '
-        'fill="none" stroke="#888" stroke-width="0.8"/>');
+    // Ramka na wierzchu
+    buf.write('<rect x="${lm.toStringAsFixed(1)}" y="${tm.toStringAsFixed(1)}" '
+        'width="${cw.toStringAsFixed(1)}" height="${ch.toStringAsFixed(1)}" '
+        'fill="none" stroke="#333" stroke-width="1.0"/>');
 
     buf.write('</svg>');
     return buf.toString();
@@ -700,14 +688,15 @@ class ExportService {
     final pdf  = pw.Document();
     final font = pw.Font.courier();
 
-    const W = 800.0, H = 290.0;
-    const lm = 42.0, rm = 42.0, tm = 8.0, bm = 22.0;
+    // ── SVG wykresu porównania — styl Dynomet ──────────────────────
+    const W = 800.0, H = 300.0;
+    const lm = 48.0, rm = 48.0, tm = 10.0, bm = 26.0;
     final cw = W - lm - rm;
     final ch = H - tm - bm;
 
-    double toX(double rpm)  => lm + (rpm  - minRpm)  / (maxRpm  - minRpm)  * cw;
-    double toYhp(double hp) => tm + ch    - (hp  / maxHpAxis) * ch;
-    double toYnm(double nm) => tm + ch    - (nm  / maxNmAxis) * ch;
+    double toX(double rpm)  => lm + (rpm - minRpm) / (maxRpm - minRpm) * cw;
+    double toYhp(double hp) => tm + ch - (hp / maxHpAxis) * ch;
+    double toYnm(double nm) => tm + ch - (nm / maxNmAxis) * ch;
 
     String pts2path(List<_Pt> pts, double Function(double) toY) {
       if (pts.isEmpty) return '';
@@ -718,70 +707,110 @@ class ExportService {
       return sb.toString();
     }
 
-    // Kolory — styl Dynomet: Run A ciemny, Run B czerwony
-    const colorA_hp = '#8B0000'; // ciemnoczerwony
-    const colorA_nm = '#228B22'; // ciemnozielony
-    const colorB_hp = '#E51C1C'; // jasny czerwony
-    const colorB_nm = '#FFA500'; // pomarańczowy
+    // Kolory — identyczne z Dynomet
+    const colorA_hp = '#8B0000'; // Run A HP: ciemnoczerwony
+    const colorA_nm = '#006400'; // Run A Nm: ciemnozielony
+    const colorB_hp = '#CC0000'; // Run B HP: czerwony
+    const colorB_nm = '#FFA500'; // Run B Nm: pomarańczowy
 
     final buf = StringBuffer();
     buf.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 $W $H" width="$W" height="$H">');
 
-    // Tło wykresu
-    buf.write('<rect x="$lm" y="$tm" width="$cw" height="$ch" fill="white" stroke="#888" stroke-width="0.8"/>');
+    // Białe tło z ramką jak Dynomet
+    buf.write('<rect x="0" y="0" width="$W" height="$H" fill="white"/>');
+    buf.write('<rect x="$lm" y="$tm" width="${cw.toStringAsFixed(1)}" height="${ch.toStringAsFixed(1)}" fill="white" stroke="#333" stroke-width="1.0"/>');
 
-    // Grid pionowe + etykiety X
+    // ── Siatka pionowa (co rpmStep) ──
     final rpmStep = _niceStep((maxRpm - minRpm) / 8);
-    for (double rpm = _roundUp(minRpm, rpmStep); rpm <= maxRpm; rpm += rpmStep) {
+    for (double rpm = _roundUp(minRpm, rpmStep); rpm <= maxRpm + 1; rpm += rpmStep) {
       final x = toX(rpm);
-      buf.write('<line x1="${x.toStringAsFixed(1)}" y1="$tm" x2="${x.toStringAsFixed(1)}" y2="${(tm+ch).toStringAsFixed(1)}" stroke="#ccc" stroke-width="0.4"/>');
-      buf.write('<text x="${x.toStringAsFixed(1)}" y="${(H-4).toStringAsFixed(1)}" text-anchor="middle" font-size="8" fill="#555" font-family="Courier">${rpm.toStringAsFixed(0)}</text>');
+      if (x < lm || x > lm + cw + 1) continue;
+      // linia siatki
+      buf.write('<line x1="${x.toStringAsFixed(1)}" y1="${tm.toStringAsFixed(1)}" '
+          'x2="${x.toStringAsFixed(1)}" y2="${(tm+ch).toStringAsFixed(1)}" '
+          'stroke="#bbb" stroke-width="0.5"/>');
+      // etykieta X — duże jak Dynomet
+      buf.write('<text x="${x.toStringAsFixed(1)}" y="${(tm+ch+14).toStringAsFixed(1)}" '
+          'text-anchor="middle" font-size="10" font-weight="bold" fill="#222" font-family="Courier">'
+          '${rpm.toStringAsFixed(0)}</text>');
     }
-    buf.write('<text x="${(lm+cw/2).toStringAsFixed(1)}" y="${(H-1).toStringAsFixed(1)}" text-anchor="middle" font-size="7" fill="#888" font-family="Courier">RPM</text>');
+    // etykieta osi X
+    buf.write('<text x="${(lm+cw/2).toStringAsFixed(1)}" y="${(H-2).toStringAsFixed(1)}" '
+        'text-anchor="middle" font-size="9" fill="#555" font-family="Courier">RPM</text>');
 
-    // Grid poziome + etykiety Y (HP lewa, Nm prawa)
-    final hpStep = _niceStep(maxHpAxis / 6);
-    final nmStep = _niceStep(maxNmAxis / 6);
-    for (double hp = 0; hp <= maxHpAxis; hp += hpStep) {
+    // ── Siatka pozioma HP (lewa oś) ──
+    final hpStep = _niceStep(maxHpAxis / 8);
+    for (double hp = 0; hp <= maxHpAxis + 1; hp += hpStep) {
       final y = toYhp(hp);
-      buf.write('<line x1="$lm" y1="${y.toStringAsFixed(1)}" x2="${(lm+cw).toStringAsFixed(1)}" y2="${y.toStringAsFixed(1)}" stroke="#ddd" stroke-width="0.4"/>');
-      buf.write('<text x="${(lm-3).toStringAsFixed(1)}" y="${(y+3).toStringAsFixed(1)}" text-anchor="end" font-size="7.5" fill="#555" font-family="Courier">${hp.toStringAsFixed(0)}</text>');
+      if (y < tm - 1 || y > tm + ch + 1) continue;
+      buf.write('<line x1="${lm.toStringAsFixed(1)}" y1="${y.toStringAsFixed(1)}" '
+          'x2="${(lm+cw).toStringAsFixed(1)}" y2="${y.toStringAsFixed(1)}" '
+          'stroke="#bbb" stroke-width="0.5"/>');
+      // HP lewa — czerwone, duże
+      buf.write('<text x="${(lm-5).toStringAsFixed(1)}" y="${(y+4).toStringAsFixed(1)}" '
+          'text-anchor="end" font-size="10" font-weight="bold" fill="#8B0000" font-family="Courier">'
+          '${hp.toStringAsFixed(0)}</text>');
     }
-    for (double nm = 0; nm <= maxNmAxis; nm += nmStep) {
+    // etykieta osi Y lewa
+    buf.write('<text x="10" y="${(tm+ch/2).toStringAsFixed(1)}" '
+        'text-anchor="middle" font-size="10" font-weight="bold" fill="#8B0000" font-family="Courier" '
+        'transform="rotate(-90 10 ${(tm+ch/2).toStringAsFixed(1)})">Hp</text>');
+
+    // ── Siatka pozioma Nm (prawa oś) ──
+    final nmStep = _niceStep(maxNmAxis / 8);
+    for (double nm = 0; nm <= maxNmAxis + 1; nm += nmStep) {
       final y = toYnm(nm);
-      buf.write('<text x="${(lm+cw+3).toStringAsFixed(1)}" y="${(y+3).toStringAsFixed(1)}" text-anchor="start" font-size="7.5" fill="#228B22" font-family="Courier">${nm.toStringAsFixed(0)}</text>');
+      if (y < tm - 1 || y > tm + ch + 1) continue;
+      // Nm prawa — zielone, duże
+      buf.write('<text x="${(lm+cw+5).toStringAsFixed(1)}" y="${(y+4).toStringAsFixed(1)}" '
+          'text-anchor="start" font-size="10" font-weight="bold" fill="#006400" font-family="Courier">'
+          '${nm.toStringAsFixed(0)}</text>');
     }
-    buf.write('<text x="10" y="${(tm+ch/2).toStringAsFixed(1)}" text-anchor="middle" font-size="8" fill="#555" font-family="Courier" transform="rotate(-90 10 ${(tm+ch/2).toStringAsFixed(1)})">Hp</text>');
-    buf.write('<text x="${(W-5).toStringAsFixed(1)}" y="${(tm+ch/2).toStringAsFixed(1)}" text-anchor="middle" font-size="8" fill="#228B22" font-family="Courier" transform="rotate(90 ${(W-5).toStringAsFixed(1)} ${(tm+ch/2).toStringAsFixed(1)})">Nm</text>');
+    // etykieta osi Y prawa
+    buf.write('<text x="${(W-8).toStringAsFixed(1)}" y="${(tm+ch/2).toStringAsFixed(1)}" '
+        'text-anchor="middle" font-size="10" font-weight="bold" fill="#006400" font-family="Courier" '
+        'transform="rotate(90 ${(W-8).toStringAsFixed(1)} ${(tm+ch/2).toStringAsFixed(1)})">Nm</text>');
 
-    // Fill pod krzywymi HP
+    // ── Krzywe (bez fillów) ──
     final pathA_hp = pts2path(hpA, toYhp);
-    final pathB_hp = pts2path(hpB, toYhp);
-    if (pathA_hp.isNotEmpty) {
-      buf.write('<path d="$pathA_hp L${toX(hpA.last.x).toStringAsFixed(1)},${(tm+ch).toStringAsFixed(1)} L${toX(hpA.first.x).toStringAsFixed(1)},${(tm+ch).toStringAsFixed(1)} Z" fill="${colorA_hp}18"/>');
-    }
-    if (pathB_hp.isNotEmpty) {
-      buf.write('<path d="$pathB_hp L${toX(hpB.last.x).toStringAsFixed(1)},${(tm+ch).toStringAsFixed(1)} L${toX(hpB.first.x).toStringAsFixed(1)},${(tm+ch).toStringAsFixed(1)} Z" fill="${colorB_hp}18"/>');
-    }
-
-    // Krzywe Nm
     final pathA_nm = pts2path(nmA, toYnm);
+    final pathB_hp = pts2path(hpB, toYhp);
     final pathB_nm = pts2path(nmB, toYnm);
-    if (pathA_nm.isNotEmpty) buf.write('<path d="$pathA_nm" fill="none" stroke="$colorA_nm" stroke-width="1.4"/>');
-    if (pathB_nm.isNotEmpty) buf.write('<path d="$pathB_nm" fill="none" stroke="$colorB_nm" stroke-width="1.4"/>');
 
-    // Krzywe HP (na wierzchu)
-    if (pathA_hp.isNotEmpty) buf.write('<path d="$pathA_hp" fill="none" stroke="$colorA_hp" stroke-width="1.8"/>');
-    if (pathB_hp.isNotEmpty) buf.write('<path d="$pathB_hp" fill="none" stroke="$colorB_hp" stroke-width="1.8"/>');
+    // Nm pod HP
+    if (pathA_nm.isNotEmpty) buf.write('<path d="$pathA_nm" fill="none" stroke="$colorA_nm" stroke-width="1.6" stroke-linejoin="round"/>');
+    if (pathB_nm.isNotEmpty) buf.write('<path d="$pathB_nm" fill="none" stroke="$colorB_nm" stroke-width="1.6" stroke-linejoin="round"/>');
+    if (pathA_hp.isNotEmpty) buf.write('<path d="$pathA_hp" fill="none" stroke="$colorA_hp" stroke-width="1.8" stroke-linejoin="round"/>');
+    if (pathB_hp.isNotEmpty) buf.write('<path d="$pathB_hp" fill="none" stroke="$colorB_hp" stroke-width="1.8" stroke-linejoin="round"/>');
 
-    // Peak markery — pionowe linie z etykietami
-    void _addPeakLine(double rpm, double hp, String color, String label) {
-      final x = toX(rpm); final y = toYhp(hp);
-      buf.write('<line x1="${x.toStringAsFixed(1)}" y1="$tm" x2="${x.toStringAsFixed(1)}" y2="${(tm+ch).toStringAsFixed(1)}" stroke="$color" stroke-width="0.8" stroke-dasharray="3,2"/>');
-      buf.write('<circle cx="${x.toStringAsFixed(1)}" cy="${y.toStringAsFixed(1)}" r="2.5" fill="$color"/>');
+    // ── Peak markery — krótka pionowa belka przy szczycie (styl Dynomet) ──
+    // Belka: 12px powyżej i 12px poniżej punktu peaku, bez dasharray
+    void addPeakMarker(double rpm, double valHp, double valNm, String colorHp, String colorNm) {
+      final xHp = toX(rpm);
+      final yHp = toYhp(valHp);
+      // HP marker — pionowa belka przy szczycie HP
+      buf.write('<line x1="${xHp.toStringAsFixed(1)}" y1="${(yHp-12).toStringAsFixed(1)}" '
+          'x2="${xHp.toStringAsFixed(1)}" y2="${(yHp+12).toStringAsFixed(1)}" '
+          'stroke="$colorHp" stroke-width="1.5"/>');
     }
-    if (hpA.isNotEmpty) _addPeakLine(maxHpRpmA, maxHpA, colorA_hp, labelA);
-    if (hpB.isNotEmpty) _addPeakLine(maxHpRpmB, maxHpB, colorB_hp, labelB);
+    void addNmPeakMarker(double rpm, double valNm, String colorNm) {
+      final xNm = toX(rpm);
+      final yNm = toYnm(valNm);
+      // Nm marker — pionowa belka przy szczycie Nm
+      buf.write('<line x1="${xNm.toStringAsFixed(1)}" y1="${(yNm-12).toStringAsFixed(1)}" '
+          'x2="${xNm.toStringAsFixed(1)}" y2="${(yNm+12).toStringAsFixed(1)}" '
+          'stroke="$colorNm" stroke-width="1.5"/>');
+    }
+
+    if (hpA.isNotEmpty) addPeakMarker(maxHpRpmA, maxHpA, maxNmA, colorA_hp, colorA_nm);
+    if (nmA.isNotEmpty) addNmPeakMarker(maxNmRpmA, maxNmA, colorA_nm);
+    if (hpB.isNotEmpty) addPeakMarker(maxHpRpmB, maxHpB, maxNmB, colorB_hp, colorB_nm);
+    if (nmB.isNotEmpty) addNmPeakMarker(maxNmRpmB, maxNmB, colorB_nm);
+
+    // Ramka na wierzchu żeby przykryć ewentualne krzywe wychodzące poza
+    buf.write('<rect x="${lm.toStringAsFixed(1)}" y="${tm.toStringAsFixed(1)}" '
+        'width="${cw.toStringAsFixed(1)}" height="${ch.toStringAsFixed(1)}" '
+        'fill="none" stroke="#333" stroke-width="1.0"/>');
 
     buf.write('</svg>');
     final chartSvgStr = buf.toString();
@@ -812,8 +841,9 @@ class ExportService {
                             color: PdfColors.grey600)),
                   pw.SizedBox(height: 2),
                   pw.Text(
-                    'Air press  ${pressureHpa?.toStringAsFixed(0) ?? "-"} hPa'
-                    '     Air temp  ${tempC?.toStringAsFixed(1) ?? "-"} deg C',
+                    'Air press  ${pressureHpa?.toStringAsFixed(0) ?? (runB.pressureHpa?.toStringAsFixed(0) ?? "-")} hPa'
+                    '     Air temp  ${tempC?.toStringAsFixed(1) ?? (runB.tempC?.toStringAsFixed(1) ?? "-")} deg C'
+                    '     Weight   ${runB.sessionWeightKg.toStringAsFixed(0)} kg',
                     style: pw.TextStyle(font: font, fontSize: 8,
                         color: PdfColors.grey700)),
                 ]),
@@ -869,9 +899,23 @@ class ExportService {
             ]),
             pw.SizedBox(height: 3),
 
-            // Wykres
+            // Wykres z logo watermark (identycznie jak single run)
             pw.Expanded(
-              child: pw.SvgImage(svg: chartSvgStr),
+              child: pw.Stack(
+                alignment: pw.Alignment.center,
+                children: [
+                  pw.SvgImage(svg: chartSvgStr),
+                  if (logoImg != null)
+                    pw.Opacity(
+                      opacity: 0.18,
+                      child: pw.Image(
+                        logoImg,
+                        height: 240,
+                        fit: pw.BoxFit.contain,
+                      ),
+                    ),
+                ],
+              ),
             ),
 
             pw.SizedBox(height: 4),

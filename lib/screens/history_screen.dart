@@ -905,18 +905,17 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
 
   // ── Compare & Print — wybierz drugi przebieg ─────────────────
   Future<void> _compareAndPrint() async {
-    // Inne przebiegi do wyboru (bez bieżącego)
     final others = widget.allRuns
         .where((r) => r.id != widget.run.id && r.graphDataPoints.isNotEmpty)
         .toList();
 
     if (others.isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('No other runs to compare with')));
       return;
     }
 
-    // Dialog wyboru drugiego przebiegu
     final selected = await showDialog<DynoRun>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -958,19 +957,31 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
 
     if (selected == null || !mounted) return;
 
-    // Pobierz ustawienia warsztatu
-    final ws  = await dbService.getWorkshopSettings();
-    final cal = await dbService.getLatestCalibration(widget.car.id);
+    // Loading feedback
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Generating comparison PDF…'),
+      duration: Duration(seconds: 2),
+    ));
 
-    final svc = ExportService();
-    await svc.exportComparePdf(
-      runA:     widget.run,
-      runB:     selected,
-      car:      widget.car,
-      workshop: ws,
-      labelA:   _formatDate(widget.run.timestamp),
-      labelB:   _formatDate(selected.timestamp),
-    );
+    try {
+      final ws  = await dbService.getWorkshopSettings();
+      final svc = ExportService();
+      await svc.exportComparePdf(
+        runA:     widget.run,
+        runB:     selected,
+        car:      widget.car,
+        workshop: ws,
+        labelA:   _formatDate(widget.run.timestamp),
+        labelB:   _formatDate(selected.timestamp),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Export error: $e'),
+        backgroundColor: const Color(0xFFE51C1C),
+        duration: const Duration(seconds: 5),
+      ));
+    }
   }
 
   // Zastosuj EMA do listy punktów
@@ -1333,16 +1344,30 @@ class _ComparisonScreenState extends State<ComparisonScreen>
   // ── Druk porównania ───────────────────────────────────────────
   Future<void> _printComparison() async {
     if (widget.runs.length < 2) return;
-    final ws  = await dbService.getWorkshopSettings();
-    final svc = ExportService();
-    await svc.exportComparePdf(
-      runA:     widget.runs[0],
-      runB:     widget.runs[1],
-      car:      widget.car,
-      workshop: ws,
-      labelA:   _formatDate(widget.runs[0].timestamp),
-      labelB:   _formatDate(widget.runs[1].timestamp),
-    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Generating comparison PDF…'),
+      duration: Duration(seconds: 2),
+    ));
+    try {
+      final ws  = await dbService.getWorkshopSettings();
+      final svc = ExportService();
+      await svc.exportComparePdf(
+        runA:     widget.runs[0],
+        runB:     widget.runs[1],
+        car:      widget.car,
+        workshop: ws,
+        labelA:   _formatDate(widget.runs[0].timestamp),
+        labelB:   _formatDate(widget.runs[1].timestamp),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Export error: $e'),
+        backgroundColor: const Color(0xFFE51C1C),
+        duration: const Duration(seconds: 5),
+      ));
+    }
   }
 
   String _formatDate(DateTime dt) =>

@@ -91,6 +91,8 @@ class _PreLaunchScreenState extends State<PreLaunchScreen> {
           overrideWeight: weight,
           weatherCf: cf,
           kFactor: _calibration?['kFactor'],
+          tempC: double.tryParse(_tempController.text),
+          pressureHpa: double.tryParse(_pressureController.text),
         ),
       ),
     );

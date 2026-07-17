@@ -5,20 +5,16 @@ import '../models/workshop_settings.dart';
 
 class DatabaseService {
   Database? _db;
-  int _userId = 0; // 0 = niezalogowany
+  int _userId = 0;
 
-  /// Ustaw aktywnego użytkownika — wywołaj po zalogowaniu/wylogowaniu
-  void setUserId(int userId) {
-    _userId = userId;
-  }
-
+  void setUserId(int userId) => _userId = userId;
   int get userId => _userId;
 
   Future<void> init() async {
     final path = join(await getDatabasesPath(), 'dyno_diy.db');
     _db = await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: (db, version) async {
         await _createTables(db);
       },
@@ -67,6 +63,16 @@ class DatabaseService {
             'ALTER TABLE workshop_settings ADD COLUMN chartMaxX REAL NOT NULL DEFAULT 6000.0'
           );
         }
+        if (oldVersion < 7) {
+          // Temperatura i ciśnienie zapisywane przy pomiarze
+          // NULL = brak danych (starsze przebiegi)
+          await db.execute(
+            'ALTER TABLE runs ADD COLUMN tempC REAL'
+          );
+          await db.execute(
+            'ALTER TABLE runs ADD COLUMN pressureHpa REAL'
+          );
+        }
       },
     );
   }
@@ -95,7 +101,9 @@ class DatabaseService {
         sessionWeightKg REAL NOT NULL,
         correctionFactor REAL NOT NULL,
         graphDataPoints TEXT NOT NULL,
-        synced INTEGER NOT NULL DEFAULT 0
+        synced INTEGER NOT NULL DEFAULT 0,
+        tempC REAL,
+        pressureHpa REAL
       )
     ''');
     await db.execute('''
@@ -169,7 +177,6 @@ class DatabaseService {
   }
 
   Future<List<DynoRun>> getUnsyncedRuns() async {
-    // Pobierz niezsynkowane runy tylko dla samochodów aktualnego usera
     final cars = await getAllCars();
     if (cars.isEmpty) return [];
     final carIds = cars.map((c) => c.id).toList();
@@ -197,10 +204,10 @@ class DatabaseService {
   Future<void> saveCalibration(int carId, double speedAt3000rpm) async {
     final kFactor = speedAt3000rpm > 0 ? 3000.0 / speedAt3000rpm : 0.0;
     await db.insert('calibrations', {
-      'carId':         carId,
+      'carId':          carId,
       'speedAt3000rpm': speedAt3000rpm,
-      'kFactor':       kFactor,
-      'timestamp':     DateTime.now().millisecondsSinceEpoch,
+      'kFactor':        kFactor,
+      'timestamp':      DateTime.now().millisecondsSinceEpoch,
     });
   }
 
