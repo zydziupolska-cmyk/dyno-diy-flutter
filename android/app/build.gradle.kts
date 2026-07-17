@@ -4,7 +4,6 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Wczytaj key.properties (plik lokalny, nie w git)
 val keystorePropertiesFile = rootProject.file("key.properties")
 val keystoreProperties = java.util.Properties()
 if (keystorePropertiesFile.exists()) {
@@ -26,10 +25,10 @@ android {
 
     signingConfigs {
         create("release") {
-            keyAlias      = keystoreProperties["KEY_ALIAS"]      as String
-            keyPassword   = keystoreProperties["KEY_PASSWORD"]   as String
-            storeFile     = file(keystoreProperties["STORE_FILE"] as String)
-            storePassword = keystoreProperties["STORE_PASSWORD"] as String
+            keyAlias      = keystoreProperties.getProperty("KEY_ALIAS")
+            keyPassword   = keystoreProperties.getProperty("KEY_PASSWORD")
+            storeFile     = file(keystoreProperties.getProperty("STORE_FILE"))
+            storePassword = keystoreProperties.getProperty("STORE_PASSWORD")
         }
     }
 
